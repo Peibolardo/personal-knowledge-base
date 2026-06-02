@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 """
 Chat Request DTO with the information to send to the API
@@ -6,7 +6,7 @@ Variables
 model_name: Represents the name of the AI model to use
 user_message: Mapped in the JSON as input
 """
-class chatRequest(BaseModel):
+class ChatRequest(BaseModel):
 
-    model_name: str = "gpt-4o-mini"
+    model_name: str = "gpt-5.4-mini"
     user_message: str = Field(..., alias="input", min_length=1)
