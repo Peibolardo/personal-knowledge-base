@@ -1,5 +1,6 @@
 package backend.exception;
 
+import backend.exception.customExceptions.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -37,7 +38,6 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     /**
      * Handles specific, anticipated application exceptions such as {@link ResourceNotFoundException}
-     * and {@link ForbiddenAccessException}.
      *
      * It uses the @ResponseStatus annotation on the exception class to determine the appropriate HTTP status code.
      * This handler ensures that while the specific exception message is logged for debugging, the client
@@ -48,7 +48,6 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
      * @return A ResponseEntity containing a standardized {@link ProblemDetail} body.
      */
     @ExceptionHandler({ ResourceNotFoundException.class,
-            ForbiddenAccessException.class,
             InvalidRequestException.class,
             ConflictException.class,
             ExternalServiceOperationException.class,

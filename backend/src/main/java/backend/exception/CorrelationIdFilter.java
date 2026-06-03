@@ -79,26 +79,4 @@ public class CorrelationIdFilter extends OncePerRequestFilter {
         }
     }
 
-/*
-    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
-            throws ServletException, IOException {
-
-        String correlationId = request.getHeader(CORRELATION_ID_HEADER_NAME);
-        if (correlationId == null || correlationId.isBlank()) {
-            correlationId = UUID.randomUUID().toString();
-        }
-
-        MDC.put(CORRELATION_ID_KEY, correlationId);
-
-        response.addHeader(CORRELATION_ID_HEADER_NAME, correlationId);
-
-        try {
-            filterChain.doFilter(request, response);
-        } finally {
-            // CRITICAL: Always remove the correlation ID from the MDC at the end of the request.
-            // This prevents the ID from "leaking" to other requests when threads are reused in the app server.
-            MDC.remove(CORRELATION_ID_KEY);
-        }
-    }
- */
 }
