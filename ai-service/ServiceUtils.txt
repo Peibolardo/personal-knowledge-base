@@ -1,3 +1,7 @@
 uvicorn routers.ChatRouter:app --reload --port 8080
 
+python3 -m uvicorn routers.ChatRouter:app --reload --port 8080
+
 Runs the python service in http://localhost:8080
+
+
