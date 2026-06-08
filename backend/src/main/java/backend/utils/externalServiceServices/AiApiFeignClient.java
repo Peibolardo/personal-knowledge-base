@@ -16,6 +16,6 @@ public interface AiApiFeignClient {
      * Calls the python service and retrieves the response
      */
     @PostMapping(PREFIX)
-    ChatResponseDTO getActiveMissions(@RequestBody @Valid ChatRequestDTO chatRequestDTO);
+    ChatResponseDTO sendMessageToAi(@RequestBody @Valid ChatRequestDTO chatRequestDTO);
 }
 

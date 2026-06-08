@@ -4,6 +4,7 @@ import backend.dto.ChatRequestDTO;
 import backend.dto.ChatResponseDTO;
 import backend.service.interfaces.OpenAICommandService;
 import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
@@ -13,15 +14,18 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("$backend.service.url.api}")
+@RequestMapping("/api/v1")
 public class OpenAICommandController {
 
     private static final Logger logger = LoggerFactory.getLogger(OpenAICommandController.class);
+    private final OpenAICommandService openAICommandService;
 
-    private OpenAICommandService openAICommandService;
+    public OpenAICommandController(OpenAICommandService openAICommandService) {
+        this.openAICommandService = openAICommandService;
+    }
 
     /**
-     * POST /chat
+     * POST /api/v1/chat
      * Purpose: Send a message to the API
      * Request Body:
      * chatRequestDTO : (Required) ChatRequestDTO
