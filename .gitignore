@@ -26,3 +26,7 @@ replay_pid*
 # Web frontend Rosol to check
 /web_frontend-develop
 
+/ai-service/.env
+
+/ai-service/.env
+
