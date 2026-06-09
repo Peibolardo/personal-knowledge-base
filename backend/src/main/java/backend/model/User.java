@@ -15,7 +15,7 @@ import org.hibernate.annotations.SQLRestriction;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@SQLDelete(sql = "UPDATE user set active = false, modification_date = NOW() WHERE id = ?")
+@SQLDelete(sql = "UPDATE users set active = false, modification_date = NOW() WHERE id = ?")
 @SQLRestriction("active = true")
 public class User {
 
