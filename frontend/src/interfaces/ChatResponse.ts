@@ -1,5 +1,5 @@
 export default interface ChatResponse {
-    input: string
+    response: string
     tokens_prompt: number,
     tokens_completion: number,
     tokens_total: number,

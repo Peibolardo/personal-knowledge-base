@@ -7,6 +7,8 @@
 // Composables
 import { createApp } from 'vue'
 
+import { createPinia } from 'pinia'
+
 // Plugins
 import { registerPlugins } from '@/plugins'
 
@@ -15,9 +17,12 @@ import App from './App.vue'
 
 // Styles
 import 'unfonts.css'
+import router from './routers/index'
 
 const app = createApp(App)
 
+app.use(createPinia()) 
+
 registerPlugins(app)
 
-app.mount('#app')
+app.use(router).mount('#app')

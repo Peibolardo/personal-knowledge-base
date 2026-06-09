@@ -1,7 +1,7 @@
 <template>
   <v-app>
     <v-main>
-      <HelloWorld />
+      <router-view />   <!-- ← replaces <ChatView /> -->
     </v-main>
     <v-btn
       class="ma-2"
@@ -14,5 +14,4 @@
 </template>
 
 <script lang="ts" setup>
-  import HelloWorld from '@/components/HelloWorld.vue'
 </script>
