@@ -30,4 +30,6 @@ public class ChatResponseDTO {
     @Size(max = 255, message = "Model must not exceed 255 characters")
     private String model;
 
+    private String conversationId;
+
 }

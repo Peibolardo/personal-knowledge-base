@@ -8,27 +8,21 @@ import org.hibernate.annotations.SQLRestriction;
 import java.time.Instant;
 
 @Entity
-@Table(name = "users")
+@Table(name = "conversations")
 @Getter
 @Setter
 @Builder
 @NoArgsConstructor
-@AllArgsConstructor
-@SQLDelete(sql = "UPDATE users set active = false, modification_date = NOW() WHERE id = ?")
+@RequiredArgsConstructor
+@SQLDelete(sql = "UPDATE conversations set active = false, modification_date = NOW() WHERE id = ?")
 @SQLRestriction("active = true")
-public class User {
+public class Conversation {
 
     @Id
     @Column(name = "id", updatable = false, nullable = false)
     private String id;
 
-    @Column(name = "name", length = 255, nullable = false)
-    private String name;
-
-    @Column(name = "password", updatable = true, nullable = false)
-    private String password;
-
-    @Column(name = "creation_date", updatable = false, nullable = false)
+    @Column(name = "creation_date", nullable = false)
     private Instant creationDate;
 
     @PrePersist

@@ -5,6 +5,8 @@ import lombok.*;
 import org.hibernate.annotations.SQLDelete;
 import org.hibernate.annotations.SQLRestriction;
 
+import java.time.Instant;
+
 @Entity
 @Table(name = "messages")
 @Getter
@@ -27,7 +29,25 @@ public class Message {
     private String user_id;
      */
 
-    @Column(name = "information", updatable = false, nullable = false)
-    private String information;
+    @Column(name = "role", updatable = false, nullable = false)
+    private String role;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "conversation_id", nullable = false)
+    private Conversation conversation;
+
+    @Column(name = "content", updatable = false, nullable = false)
+    private String content;
+
+    @Column(name = "creation_date", nullable = false)
+    private Instant creationDate;
+
+    @PrePersist
+    public void onPrePersist(){
+
+        this.creationDate = Instant.now();
+
+    }
+
 
 }

@@ -18,4 +18,6 @@ public class ChatRequestDTO {
     @NotBlank(message = "Input cannot be blank")
     private String input;
 
+    private String conversationId;
+
 }
