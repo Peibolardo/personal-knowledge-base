@@ -28,7 +28,7 @@ public class Message {
      * Column to determine if the message comes from the user or from the OpenAI API
      */
     @Column(name = "role", updatable = false, nullable = false)
-    private String role;
+    private String role; // "user" or "assistant"
 
     @Column(name = "content", updatable = false, nullable = false )
     private String content;
@@ -37,8 +37,12 @@ public class Message {
     @JoinColumn(name = "conversation_id", nullable = false)
     private Conversation conversation;
 
+    /**
+     * //TODO
+     * Nullable for now until phase5.1 when we add users and authentication
+     */
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id", nullable = false)
+    @JoinColumn(name = "user_id", nullable = true)
     private User user;
 
     @Column(name = "creation_date", updatable = false, nullable = false)
