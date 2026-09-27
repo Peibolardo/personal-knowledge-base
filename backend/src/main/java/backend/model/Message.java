@@ -1,13 +1,13 @@
 package backend.model;
 
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.SQLDelete;
 import org.hibernate.annotations.SQLRestriction;
+
+import java.time.Instant;
+import java.util.UUID;
 
 @Entity
 @Table(name = "messages")
@@ -24,8 +24,36 @@ public class Message {
     @Column(name = "id", updatable = false, nullable = false)
     private String id;
 
-    private String input;
+    /**
+     * Column to determine if the message comes from the user or from the OpenAI API
+     */
+    @Column(name = "role", updatable = false, nullable = false)
+    private String role;
 
-    private String conversationId;
+    @Column(name = "content", updatable = false, nullable = false )
+    private String content;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "conversation_id", nullable = false)
+    private Conversation conversation;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id", nullable = false)
+    private User user;
+
+    @Column(name = "creation_date", updatable = false, nullable = false)
+    private Instant creationDate;
+
+    @Column(name = "active", nullable = false)
+    private boolean active;
+
+    @PrePersist
+    public void onPrePersist() {
+
+        this.id = UUID.randomUUID().toString();
+        this.creationDate = Instant.now();
+        this.active = true;
+
+    }
 
 }
