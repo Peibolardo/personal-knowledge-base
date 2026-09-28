@@ -20,7 +20,6 @@ public interface MessageChatResponseMapper {
      * @return The mapped ChatResponseDTO DTO.
      */
     @Mapping(source = "conversation.id", target = "conversationId")
-    @Mapping(source = "content ", target = "input")
     ChatResponseDTO toDTO(Message message);
 
     /**

@@ -4,6 +4,9 @@ import backend.dto.ChatRequestDTO;
 import backend.dto.ChatResponseDTO;
 import backend.dto.MessageDTO;
 import backend.exception.customExceptions.ConflictException;
+import backend.exception.customExceptions.ExternalServiceOperationException;
+import backend.exception.customExceptions.InvalidRequestException;
+import backend.exception.customExceptions.UnreachableExternalServiceException;
 import backend.mapper.MessageChatRequestMapper;
 import backend.mapper.MessageMapper;
 import backend.model.Conversation;
@@ -19,6 +22,8 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
+
+import static backend.utils.IdValidator.validateUuids;
 
 @Service
 public class OpenAICommandServiceImpl implements OpenAICommandService {
@@ -42,6 +47,10 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
      * Function to send the context window of 10 messages max to the AI-API order from oldest to newest
      * @param chatRequestDTO The new message sent by the user
      * @return ChatResponseDTO with the AI response.
+     *
+     * @throws InvalidRequestException if input IDs or DTO data are invalid.
+     * @throws UnreachableExternalServiceException If the API Service is not online
+     * @throws ExternalServiceOperationException If an exception occurs in the API Service
      */
     public ChatResponseDTO sendMessageToApi(ChatRequestDTO chatRequestDTO){
 
@@ -64,6 +73,8 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
         }
         // 5.2 Else add the context messages then the new one
         else{
+            // 5.2.1 Checks if the conversationId is valid
+            validateUuids(chatRequestDTO.getConversationId());
             List<Message> contextMessages = messageRepository.getContextMessages(message.getConversation().getId(), PageRequest.of(0, 9));
             List<MessageDTO> contextMessagesDTO = messageMapper.toDtoList(contextMessages);
             messageDTOList.addAll(contextMessagesDTO);
@@ -71,7 +82,7 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
         }
 
         // 6.Send the context to the API and try to receive the response
-        ChatResponseDTO responseDTO = externalAiService.sendMessageToAi(chatRequestDTO);
+        ChatResponseDTO responseDTO = externalAiService.sendMessageToAi(messageDTOList);
 
         // 2.Check if the response exists
         if(responseDTO == null){
@@ -90,6 +101,5 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
     private boolean checkConversationExists(ChatRequestDTO chatRequestDTO){
         return chatRequestDTO.getConversationId() == null;
     }
-
 
 }

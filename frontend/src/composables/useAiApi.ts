@@ -18,7 +18,7 @@ export function useAiApi(){
         }
         
         const response = await AiApiStore.sendMessage(request)
-        return response?.response
+        return response?.content
 
     }
 
