@@ -2,10 +2,13 @@ import { useAxios } from '@/composables/useAxios'
 import type ChatRequest from '@/interfaces/ChatRequest'
 import type ChatResponse from '@/interfaces/ChatResponse'
 import { defineStore } from 'pinia'
+import { ref } from 'vue'
 
 export const useAiApiStore = defineStore('ai-api', () =>{
 
 const axiosInstance = useAxios({ baseURL: import.meta.env.VITE_AI_API_URL })
+
+    const conversationId = ref<string | null>(null)
 
     /**
      * POST a request to the AI Api and retrieve a response from it
@@ -15,11 +18,18 @@ const axiosInstance = useAxios({ baseURL: import.meta.env.VITE_AI_API_URL })
     async function sendMessage(chatRequest: ChatRequest): Promise<ChatResponse | undefined>{
         
         try{
+            
             console.log("Trying to send a Message to open AI")
-            const response = await axiosInstance.post("/chat",
+            const response = await axiosInstance.post<ChatResponse>("/chat",
                 chatRequest
             )
+            
             console.log("Successfully retrieved the Response from the AI")
+
+            // Saves the conversationId in case of new Conversation
+            if (!conversationId.value) {
+                conversationId.value = response.data.conversationId
+            }
             return response.data as ChatResponse
         }
         catch(error: any){
@@ -29,7 +39,8 @@ const axiosInstance = useAxios({ baseURL: import.meta.env.VITE_AI_API_URL })
     }
 
     return{
-        sendMessage
+        sendMessage,
+        conversationId
     }
     
 })

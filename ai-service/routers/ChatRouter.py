@@ -1,6 +1,3 @@
-from dotenv import load_dotenv
-load_dotenv()
-
 from fastapi import FastAPI, Depends
 from services.OpenAiService import OpenAiService
 from DTOs.ChatRequest import ChatRequest

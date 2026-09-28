@@ -11,9 +11,10 @@ export function useAiApi(){
      * @returns response sent by the AI
      */
     async function sendMessageToApi(input: string){
-
+        
         const request: ChatRequest = {
-            input: input
+            input: input,
+            conversationId: AiApiStore.conversationId
         }
         
         const response = await AiApiStore.sendMessage(request)
@@ -21,8 +22,18 @@ export function useAiApi(){
 
     }
 
+
+    /**
+     * Function to reset conversationId
+     * Sets to null the ref conversationId in ai-api.store
+     */
+    function resetConversation(){
+        AiApiStore.conversationId = null
+    }
+
     return {
-        sendMessageToApi
+        sendMessageToApi,
+        resetConversation
     }
 
 
