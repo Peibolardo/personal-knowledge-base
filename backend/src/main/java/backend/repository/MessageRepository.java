@@ -1,6 +1,7 @@
 package backend.repository;
 
 import backend.model.Message;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -12,15 +13,13 @@ import java.util.List;
 public interface MessageRepository extends JpaRepository<Message, String> {
 
     /**
-     * Example
-     * Gets the List of Mission Report from the database by the missionId and the originator.
-     * @param userId The identifier of the originator.
-     * @param missionId The identifier of the mission.
+     * //TODO add user as condition when auth is added is Phase5
+     * Gets the last 9 messages from a conversation to retrieve the context.
+     * @param conversationId The identifier of the conversation.
      * @return List<MissionReportNew>
      */
-    /*
-    @Query("SELECT mr FROM MissionReportNew mr WHERE mr.mission.id = :missionId AND mr.active = TRUE AND mr.originator = :userId")
-    List<MissionReportNew> getMissionReportsByMissionAndUser(@Param("missionId") String missionId, @Param("userId") String userId);
-    */
+    @Query("SELECT m FROM Message m WHERE m.conversation.id =:conversationId ORDER BY creation_date DESC")
+    List<Message> getContextMessages(@Param("conversationId") String conversationId, Pageable pageable);
+
 
 }

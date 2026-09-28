@@ -15,7 +15,7 @@ import lombok.NoArgsConstructor;
 @Builder
 public class MessageDTO {
 
-    @NotBlank(message = "content can not be blank")
+    @NotBlank(message = "role can not be blank")
     private String role;    // "user" or "assistant"
 
     @NotBlank(message = "content can not be blank")
