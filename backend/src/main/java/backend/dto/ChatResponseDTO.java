@@ -16,7 +16,7 @@ public class ChatResponseDTO {
     @NotBlank(message = "content can not be blank")
     private String content;
 
-    @NotNull(message = "conversationId cannot be blank")
+    @NotBlank(message = "conversationId cannot be blank")
     private String conversationId;
 
     @JsonProperty("tokens_prompt")

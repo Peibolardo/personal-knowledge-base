@@ -23,6 +23,9 @@ public class Conversation{
     @Column(name = "id", updatable = false, nullable = false)
     private String id;
 
+    @Column(name = "title", updatable = true)
+    private String title;
+
     @Column(name = "modification_date", nullable = false)
     private Instant modificationDate;
 
