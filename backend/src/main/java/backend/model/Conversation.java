@@ -39,6 +39,7 @@ public class Conversation{
         Instant now = Instant.now();
         this.creationDate = now;
         this.modificationDate = now;
+        this.active = true;
 
     }
 

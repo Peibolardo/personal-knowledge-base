@@ -22,6 +22,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 import static backend.utils.IdValidator.validateUuids;
@@ -78,6 +79,8 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
             // 5.2.1 Checks if the conversationId is valid
             validateUuids(chatRequestDTO.getConversationId());
             List<Message> contextMessages = messageRepository.getContextMessages(messageRequest.getConversation().getId(), PageRequest.of(0, 9));
+            // 5.2.2 order properly the messages reversing the order fetched
+            Collections.reverse(contextMessages);
             List<MessageDTO> contextMessagesDTO = messageMapper.toDtoList(contextMessages);
             messageDTOList.addAll(contextMessagesDTO);
             messageDTOList.add(messageDTO);

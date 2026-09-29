@@ -2,10 +2,10 @@ import uvicorn
 from dotenv import load_dotenv
 from fastapi import FastAPI
 
+load_dotenv()
+
 # Import router
 from routers.ChatRouter import router as chat_router
-
-load_dotenv()
 
 # Singleton instance of FastAPI in the hole project
 app = FastAPI()

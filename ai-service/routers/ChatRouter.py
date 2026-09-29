@@ -24,7 +24,7 @@ Request Body:
 context: (Required) List[Message]
 service: Injected service dependencies to make use of them
 """
-@router.post("/chat", response_model = ChatResponse)
+@router.post("", response_model = ChatResponse)
 async def send_message_to_api(
     context: List[Message],
     service: OpenAiService = Depends(get_openai_service)
