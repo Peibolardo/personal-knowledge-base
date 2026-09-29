@@ -11,7 +11,7 @@ model_used:  Represents the name of the AI model to use
 """
 class ChatResponse(BaseModel):
 
-    response: str
+    content: str
     tokens_prompt: int
     tokens_completion: int
     tokens_total: int

@@ -30,7 +30,6 @@ public interface MessageChatResponseMapper {
      * @return The mapped Message entity.
      */
     @Mapping(target = "conversation", ignore = true)
-    @Mapping(source = "input", target = "content")
     Message toMessage(ChatResponseDTO chatResponseDTO);
 
     /**

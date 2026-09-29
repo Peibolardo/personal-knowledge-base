@@ -1,4 +1,6 @@
 from pydantic import BaseModel, Field
+from typing import List
+from DTOs.Message import Message
 
 """
 Chat Request DTO with the information to send to the API
@@ -9,4 +11,4 @@ user_message: Mapped in the JSON as input
 class ChatRequest(BaseModel):
 
     model_name: str = "gpt-4o-mini"
-    user_message: str = Field(..., alias="input", min_length=1)
+    context: List[Message] = []  # empty on first message
