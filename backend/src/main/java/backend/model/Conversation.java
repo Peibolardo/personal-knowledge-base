@@ -6,6 +6,7 @@ import org.hibernate.annotations.SQLDelete;
 import org.hibernate.annotations.SQLRestriction;
 
 import java.time.Instant;
+import java.util.UUID;
 
 @Entity
 @Table(name = "conversations")
@@ -34,6 +35,7 @@ public class Conversation{
     @PrePersist
     public void onPrePersist(){
 
+        this.id = UUID.randomUUID().toString();
         Instant now = Instant.now();
         this.creationDate = now;
         this.modificationDate = now;
