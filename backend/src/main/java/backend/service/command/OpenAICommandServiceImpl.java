@@ -63,7 +63,7 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
 
         // 2. Map the requestDTO message to a Message object and setConversation due to ignored in mapping
         Message messageRequest = chatRequestMapper.toEntity(chatRequestDTO);
-        messageRequest.setConversation(getOrCreateConversation(chatRequestDTO.getConversationId()));
+        messageRequest.setConversation(getOrCreateConversation(chatRequestDTO.getConversationId(), chatRequestDTO.getInput()));
         // 3. Set user as the role of the sender
         messageRequest.setRole("user");
 
@@ -123,15 +123,25 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
      * Method to get or create a new conversation for the messages
      * It checks if there is any conversationId passed down and create one if it doesnt, otherwise it fetches it from the database
      * @param conversationId The unique identifier of the conversation
+     * @param message The first message from the conversation
      * @return Conversation Object
      */
-    private Conversation getOrCreateConversation(String conversationId) {
+    private Conversation getOrCreateConversation(String conversationId, String message) {
         if (conversationId == null) {
-            Conversation newConversation = Conversation.builder().build();
+            Conversation newConversation = Conversation.builder().title(generateTitle(message)).build();
             return conversationRepository.save(newConversation);
         }
         return conversationRepository.findById(conversationId)
                 .orElseThrow(() -> new RuntimeException("Conversation not found"));
+    }
+
+    /**
+     * Method to Generate a title automatically when created a Conversation
+     * @param message The first message from the conversation
+     * @return The title created
+     */
+    private String generateTitle(String message) {
+        return message.length() > 30 ? message.substring(0, 30) + "..." : message;
     }
 
 }

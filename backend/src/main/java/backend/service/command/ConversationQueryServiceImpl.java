@@ -58,6 +58,7 @@ public class ConversationQueryServiceImpl implements ConversationQueryService {
      * @param conversationId The unique identifier of the conversation.
      * @return DTO List with all the Messages that belong to a conversation.
      * @throws InvalidRequestException If the conversationId is not UUID4.
+     * @throws ResourceNotFoundException If there are no messages for that conversation in the database
      */
     public List<MessageDTO> getMessagesByConversationId(String conversationId){
 
@@ -66,7 +67,6 @@ public class ConversationQueryServiceImpl implements ConversationQueryService {
 
         // 2. Retrieve all the conversation from the database
         List<Message> messageList = messageRepository.getConversationMessages(conversationId);
-        Collections.reverse(messageList);
 
         // 3. Check if the List is empty
         if(messageList.isEmpty()){

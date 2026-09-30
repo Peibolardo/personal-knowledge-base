@@ -26,7 +26,7 @@ public interface MessageRepository extends JpaRepository<Message, String> {
      * @param conversationId The identifier of the conversation.
      * @return List<Message>
      */
-    @Query("SELECT m FROM Message m WHERE m.conversation.id = :conversationId ORDER BY creationDate DESC")
+    @Query("SELECT m FROM Message m WHERE m.conversation.id = :conversationId ORDER BY creationDate ASC")
     List<Message> getConversationMessages(@Param("conversationId") String conversationId);
 
 }
