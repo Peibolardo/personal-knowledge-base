@@ -21,7 +21,7 @@ import router from './routers/index'
 
 const app = createApp(App)
 
-app.use(createPinia()) 
+app.use(createPinia())
 
 registerPlugins(app)
 

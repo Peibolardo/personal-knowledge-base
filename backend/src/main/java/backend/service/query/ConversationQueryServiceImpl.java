@@ -11,7 +11,6 @@ import backend.model.Message;
 import backend.repository.ConversationRepository;
 import backend.repository.MessageRepository;
 import backend.service.interfaces.ConversationQueryService;
-import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -20,9 +19,7 @@ import java.util.List;
 
 import static backend.utils.IdValidator.validateUuids;
 
-
 @Service
-@RequiredArgsConstructor
 public class ConversationQueryServiceImpl implements ConversationQueryService {
 
     private static final Logger logger = LoggerFactory.getLogger(ConversationQueryServiceImpl.class);
@@ -30,6 +27,13 @@ public class ConversationQueryServiceImpl implements ConversationQueryService {
     private final MessageRepository messageRepository;
     private final ConversationMapper conversationMapper;
     private final MessageMapper messageMapper;
+
+    public ConversationQueryServiceImpl(ConversationRepository conversationRepository, MessageRepository messageRepository, ConversationMapper conversationMapper, MessageMapper messageMapper) {
+        this.conversationRepository = conversationRepository;
+        this.messageRepository = messageRepository;
+        this.conversationMapper = conversationMapper;
+        this.messageMapper = messageMapper;
+    }
 
     /**
      * Method to get all the Conversation objects from the database
