@@ -1,6 +1,5 @@
 import os
 from openai import OpenAI
-from DTOs.ChatRequest import ChatRequest
 from DTOs.ChatResponse import ChatResponse
 from DTOs.Message import Message
 import logging
@@ -13,6 +12,7 @@ class OpenAiService:
         self.client = OpenAI()
         self.logger = logging.getLogger("uvicorn.error")
         self.model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+        self.system_prompt = os.getenv("SYSTEM_PROMPT")
 
     """
     Function that receives a list of Messages with the context and send it to the OpenAI API
@@ -23,9 +23,19 @@ class OpenAiService:
         self.logger.info("Attempting to send a message to the AI")
 
         messages = []
+
+        #Check if the system prompt is null
+        if not self.system_prompt:
+            raise ValueError("SYSTEM_PROMPT environment variable is not configured")
+
+        messages.append({
+            "role": "system",
+            "content": self.system_prompt
+        })
+
         for msg in context:
             messages.append({
-                "role": msg.role,
+                "role": msg.role.value,
                 "content": msg.content
             })
         response = self.client.chat.completions.create(

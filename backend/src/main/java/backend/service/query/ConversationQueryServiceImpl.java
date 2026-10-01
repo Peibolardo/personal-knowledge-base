@@ -1,4 +1,4 @@
-package backend.service.command;
+package backend.service.query;
 
 import backend.dto.ConversationDTO;
 import backend.dto.MessageDTO;
@@ -16,7 +16,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
-import java.util.Collections;
 import java.util.List;
 
 import static backend.utils.IdValidator.validateUuids;
