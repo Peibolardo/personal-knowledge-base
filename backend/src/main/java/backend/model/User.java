@@ -1,12 +1,11 @@
 package backend.model;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.SQLDelete;
 import org.hibernate.annotations.SQLRestriction;
+
+import java.time.Instant;
 
 @Entity
 @Table(name = "users")
@@ -15,7 +14,7 @@ import org.hibernate.annotations.SQLRestriction;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@SQLDelete(sql = "UPDATE user set active = false, modification_date = NOW() WHERE id = ?")
+@SQLDelete(sql = "UPDATE users set active = false, modification_date = NOW() WHERE id = ?")
 @SQLRestriction("active = true")
 public class User {
 
@@ -29,5 +28,25 @@ public class User {
     @Column(name = "password", updatable = true, nullable = false)
     private String password;
 
+    @Column(name = "creation_date", updatable = false, nullable = false)
+    private Instant creationDate;
+
+    @Column(name = "modification_date", nullable = false)
+    private Instant modificationDate;
+
+    @Column(name = "active", nullable = false, columnDefinition = "boolean default true")
+    private boolean active;
+
+    @PrePersist
+    public void onPrePersist() {
+        Instant now = Instant.now();
+        this.creationDate = now;
+        this.modificationDate = now;
+    }
+
+    @PreUpdate
+    public void onPreUpdate() {
+        this.modificationDate = Instant.now();
+    }
 
 }

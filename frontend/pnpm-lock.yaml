@@ -20,6 +20,9 @@ importers:
       pinia:
         specifier: ^3.0.4
         version: 3.0.4(typescript@5.9.3)(vue@3.5.34(typescript@5.9.3))
+      uuid:
+        specifier: ^14.0.2
+        version: 14.0.2
       vue:
         specifier: ^3.5.30
         version: 3.5.34(typescript@5.9.3)
@@ -1118,6 +1121,10 @@ packages:
     resolution: {integrity: sha512-1uEe95xksV1O0CYKXo8vQvN1JEbtJp7lb7C5U9HMsIp6IVwntkH/oNUzyVNQSd4S1sYk2FpSSW44FqMc8qee5w==}
     engines: {node: '>=4'}
 
+  uuid@14.0.2:
+    resolution: {integrity: sha512-xZe/16rV4aa+HGSOCiY2YeLT1OybRLrrkL/Rqaq7p7GMVXjFh+6wN4oMYgjFmnSnhY8t6Xpdl2l9qmnHYuMHwQ==}
+    hasBin: true
+
   varint@6.0.0:
     resolution: {integrity: sha512-cXEIW6cfr15lFv563k4GuVuW/fiwjknytD37jIOLSdSWuOI6WnO/oKwmP2FQTU2l01LP8/M5TSAJpzUaGe3uWg==}
 
@@ -2172,6 +2179,8 @@ snapshots:
       webpack-virtual-modules: 0.6.2
 
   upath@2.0.1: {}
+
+  uuid@14.0.2: {}
 
   varint@6.0.0: {}
 

@@ -13,8 +13,11 @@ import lombok.*;
 @Builder
 public class ChatResponseDTO {
 
-    @NotBlank(message = "response can not be blank")
-    private String response;
+    @NotBlank(message = "content can not be blank")
+    private String content;
+
+    @NotBlank(message = "conversationId cannot be blank")
+    private String conversationId;
 
     @JsonProperty("tokens_prompt")
     private Integer tokensPrompt;

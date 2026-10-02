@@ -1,5 +1,6 @@
 package backend.controller.command;
 
+import backend.controller.interfaces.IOpenAICommandController;
 import backend.dto.ChatRequestDTO;
 import backend.dto.ChatResponseDTO;
 import backend.service.interfaces.OpenAICommandService;
@@ -13,8 +14,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/v1")
-public class OpenAICommandController {
+@RequestMapping("${api.endpoint.backend}")
+public class OpenAICommandController implements IOpenAICommandController {
 
     private static final Logger logger = LoggerFactory.getLogger(OpenAICommandController.class);
     private final OpenAICommandService openAICommandService;
@@ -32,6 +33,8 @@ public class OpenAICommandController {
      * 200 OK: If successful, returns the chat response from the API.
      * 400 Bad Request: if missing parameters or invalid data.
      * 500 Internal Server Error.
+     * 502 External Service Error: If there is some exception in the external service flow.
+     * 503 External Service Unreachable: If the Service is down or cant reach it.
      *
      * @param chatRequestDTO The ChatRequestDTO with the information to send to the API.
      * @return A ResponseEntity containing the ChatResponseDTO with the response information.
@@ -45,6 +48,5 @@ public class OpenAICommandController {
         return ResponseEntity.ok(chatResponseDTO);
 
     }
-
 
 }
