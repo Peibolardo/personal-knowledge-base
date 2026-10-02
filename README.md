@@ -78,15 +78,23 @@ The project is divided into three independent layers that communicate over HTTP:
 
 ## 📋 Project Phases
 
-| Phase | Name | Key Concepts |
-|---|---|---|
 | **1** | Foundation & First AI Call | REST APIs, inter-service communication, OpenAI basics |
-| **2** | Context & Conversation Memory | PostgreSQL, session management, context windows |
-| **3** | Notes & Personal Knowledge | Full CRUD, REST design, frontend-backend data flow |
-| **4** | RAG — Retrieval Augmented Generation | Embeddings, vector search, pgvector, document ingestion |
-| **5** | Auth & Multi-user | JWT, security, scoped data per user |
-| **6** | Deploy | Docker Compose, cloud deployment |
-| **7** | AI Agents | Autonomous AI actions, tool use, agentic patterns |
+
+| Version | Phase | Name | Key Concepts |
+|---|---|---|---|
+| **v1.0** | 1 | Foundation & First AI Call | REST APIs, inter-service communication, OpenAI basics |
+| **v2.1** | 2.1 | Context Window | Conversation history, context windows, tokens, persistence ← *current* |
+| **v2.2** | 2.2 | LLM Engineering | System prompts, structured output, streaming, error handling, retries, token tracking |
+| **v2.3** | 2.3 | Context Engineering | Token budget, conversation summarization, dynamic context |
+| **v3.0** | 3 | Knowledge Base | Full notes CRUD, document import, frontend for notes |
+| **v4.0** | 4 | Embeddings + Vector DB | pgvector, OpenAI embeddings API, chunking, tiktoken |
+| **v5.0** | 5 | RAG | Built from scratch — query processing, vector search, relevant chunks injected as context |
+| **v5.5** | 5.5 | Evaluation | Recall, faithfulness, relevancy metrics across RAG versions |
+| **v6.0** | 6 | Auth + AI Security | JWT, prompt injection awareness, scoped data per user |
+| **v7.0** | 7 | Tools | Function calling, AI executes actions (search_knowledge, create_note, search_web...) |
+| **v8.0** | 8 | Agents | ReAct loop, tool chaining, autonomous AI decisions |
+| **v9.0** | 9 | Advanced Agents | LangGraph, MCP, multi-agent, human-in-the-loop, workflows |
+| **v10.0** | 10 | Production / LLMOps | Docker, deployment, observability, tracing, cost monitoring, CI/CD |
 
 ---
 
@@ -167,7 +175,8 @@ personal-knowledge-base/
 
 ## 🔄 Current Status
 
-**Phase 2 — Context & Conversation Memory** *(in progress)*
-
-- ✅ Phase 1 complete — Vue chat UI, Spring Boot API, Python microservice and OpenAI integration all connected and working
-- 🔄 Phase 2 in progress — implementing conversation history and context management so the AI maintains memory across messages
+**v2.2 — LLM Engineering** *(in progress)*
+ 
+- ✅ v1.0 complete — Vue chat UI, Spring Boot API, Python microservice and OpenAI integration all connected and working
+- ✅ v2.1 complete — conversation history implemented, last 9 messages + current sent to model, token tracking in place
+- 🔄 In progress: v2.2 — LLM Engineering (system prompts, structured output, streaming)
