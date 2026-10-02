@@ -4,6 +4,7 @@ from DTOs.ChatResponse import ChatResponse
 from DTOs.Message import Message
 import logging
 from typing import List
+from services.TokenizerService import TokenizerService
 
 class OpenAiService:
 
@@ -13,6 +14,9 @@ class OpenAiService:
         self.logger = logging.getLogger("uvicorn.error")
         self.model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
         self.system_prompt = os.getenv("SYSTEM_PROMPT")
+
+    #TokenizerService with the model established in the env file
+    tokenizer = TokenizerService(os.getenv("OPENAI_MODEL", "gpt-4o-mini"))
 
     """
     Function that receives a list of Messages with the context and send it to the OpenAI API
@@ -43,11 +47,15 @@ class OpenAiService:
                     messages = messages
                 )
 
+        ## Tokens used by the response message
+        tokens_input_message = self.tokenizer.count_tokens(context[-1].content)
+
         return ChatResponse(
             content=response.choices[0].message.content,
             tokens_prompt=response.usage.prompt_tokens,
             tokens_completion=response.usage.completion_tokens,
             tokens_total=response.usage.total_tokens,
+            tokens_input_message = tokens_input_message,
             model_used=response.model
         )
 

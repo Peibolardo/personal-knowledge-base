@@ -35,6 +35,9 @@ public class Message {
     @JoinColumn(name = "conversation_id", nullable = false)
     private Conversation conversation;
 
+    @Column(name = "token_count")
+    private Integer tokenCount;
+
     /**
      * //TODO
      * Nullable for now until phase5.1 when we add users and authentication

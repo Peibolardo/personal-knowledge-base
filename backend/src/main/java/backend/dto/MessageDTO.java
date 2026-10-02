@@ -21,4 +21,6 @@ public class MessageDTO {
     @NotBlank(message = "content can not be blank")
     private String content;
 
+    private Integer tokenCount;
+
 }

@@ -29,6 +29,10 @@ public interface MessageChatResponseMapper {
      * @param chatResponseDTO The ChatResponseDTO DTO to map.
      * @return The mapped Message entity.
      */
+
+    @Mapping(source = "tokensCompletion", target = "tokenCount")
+    @Mapping(target = "user", ignore = true)
+    @Mapping(target = "role", ignore = true)
     @Mapping(target = "conversation", ignore = true)
     Message toMessage(ChatResponseDTO chatResponseDTO);
 

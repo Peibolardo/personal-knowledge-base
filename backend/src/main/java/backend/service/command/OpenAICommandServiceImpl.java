@@ -95,6 +95,7 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
         }
 
         // 8. Save the request message into the database
+        messageRequest.setTokenCount(responseDTO.getTokensInputMessage());
         messageRepository.save(messageRequest);
 
         // 9. Save the response message

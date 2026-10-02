@@ -25,6 +25,10 @@ public class ChatResponseDTO {
     @JsonProperty("tokens_completion")
     private Integer tokensCompletion;
 
+    //Property that return the token cost of the last message sent
+    @JsonProperty("tokens_input_message")
+    private Integer tokensInputMessage;
+
     @JsonProperty("tokens_total")
     private Integer tokensTotal;
 
