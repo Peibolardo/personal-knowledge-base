@@ -1,9 +1,11 @@
 import { useAiApiStore } from '@/stores/ai-api.store'
+import { useConversationStore } from '@/stores/conversationStore'
 import type ChatRequest from '@/interfaces/ChatRequest'
 
 export function useAiApi(){
 
     const AiApiStore = useAiApiStore()
+    const conversationStore = useConversationStore()
 
     /**
      * Function to send the request to the store and receive the data
@@ -14,7 +16,7 @@ export function useAiApi(){
         
         const request: ChatRequest = {
             input: input,
-            conversationId: AiApiStore.conversationId
+            conversationId: conversationStore.activeConversationId
         }
         
         const response = await AiApiStore.sendMessage(request)
@@ -22,18 +24,8 @@ export function useAiApi(){
 
     }
 
-
-    /**
-     * Function to reset conversationId
-     * Sets to null the ref conversationId in ai-api.store
-     */
-    function resetConversation(){
-        AiApiStore.conversationId = null
-    }
-
     return {
         sendMessageToApi,
-        resetConversation
     }
 
 
