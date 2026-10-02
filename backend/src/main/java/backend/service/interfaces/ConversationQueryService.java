@@ -17,6 +17,7 @@ public interface ConversationQueryService {
     List<ConversationDTO> getAllConversations();
 
 
+
     List<MessageDTO> getMessagesByConversationId(String conversationId);
 
 }
