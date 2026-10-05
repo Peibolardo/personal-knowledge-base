@@ -73,7 +73,9 @@ class OpenAiService:
                     })
                 response = self.client.chat.completions.create(
                             model = self.model,
-                            messages = messages
+                            messages = messages,
+                            temperature= 1,
+                            max_completion_tokens = 100
                         )
 
                 ## Tokens used by the response message
