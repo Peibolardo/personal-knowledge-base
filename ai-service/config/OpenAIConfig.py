@@ -20,6 +20,30 @@ class Configuration:
     temperature = ...
     max_completion_tokens = ...
     top_p = ...
-    response_format = ...
+    response_format = ... 
     stream = ...
     metadata = ...
+
+'''
+Ex for json_schema:
+response_format={
+    "type": "json_schema",
+    "json_schema": {
+        "name": "assistant_response",
+        "strict": True,
+        "schema": {
+            "type": "object",
+            "properties": {
+                "respuesta": {
+                    "type": "string"
+                },
+                "confidence": {
+                    "type": "number"
+                }
+            },
+            "required": ["respuesta", "confidence"],
+            "additionalProperties": False
+        }
+    }
+}
+'''

@@ -71,11 +71,10 @@ class OpenAiService:
                         "role": msg.role.value,
                         "content": msg.content
                     })
+                self.logger.info("SYSTEM PROMPT: %s", self.system_prompt)
                 response = self.client.chat.completions.create(
                             model = self.model,
-                            messages = messages,
-                            temperature= 1,
-                            max_completion_tokens = 100
+                            messages = messages
                         )
 
                 ## Tokens used by the response message
@@ -135,7 +134,7 @@ class OpenAiService:
             except APIError as e:
                 self.logger.exception("Error with the API")
                 raise AIServiceException(
-                    "Unexpected AI service error"
+                    "Unexpected AI service error",
                 ) from e
 
             except Exception:

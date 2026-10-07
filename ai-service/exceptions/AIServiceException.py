@@ -10,7 +10,7 @@ AIConnectionException descends from AIServiceException class and return 503 code
 AIRateLimitException descends from AIServiceException class and return 504 code
 '''
 class AIServiceException(Exception):
-    def __init__(self, message: str, status_code:int):
+    def __init__(self, message: str, status_code: int = status.HTTP_500_INTERNAL_SERVER_ERROR):
         super().__init__(message)
         self.status_code = status_code
 
