@@ -28,12 +28,15 @@ public class Message {
     @Column(name = "role", updatable = false, nullable = false)
     private String role; // "user" or "assistant"
 
-    @Column(name = "content", updatable = false, nullable = false )
+    @Column(name = "content", columnDefinition = "TEXT", nullable = false )
     private String content;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "conversation_id", nullable = false)
     private Conversation conversation;
+
+    @Column(name = "token_count")
+    private Integer tokenCount;
 
     /**
      * //TODO
