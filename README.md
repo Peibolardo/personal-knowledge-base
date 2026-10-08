@@ -20,17 +20,18 @@ Built as a self-driven learning project with the goal of understanding how to in
 The project is divided into three independent layers that communicate over HTTP:
 
 ```
-[ Vue 3 Frontend ]
+[ Vue 3 Frontend ]          :3000
         ↕ HTTP (Axios)
-[ Spring Boot Backend ]     ←── Main API, business logic, database
+[ Spring Boot Backend ]     :8081  ←── Main API, business logic, database
         ↕ HTTP (WebClient)
-[ Python FastAPI Service ]  ←── AI gateway, communicates with OpenAI
+[ Python FastAPI Service ]  :8080  ←── AI gateway, communicates with OpenAI
         ↕
 [ OpenAI API ]
-
-[ PostgreSQL ]              ←── Used by Spring Boot
+ 
+[ PostgreSQL ]              :5432  ←── Used by Spring Boot
 ```
 
+> **Planned (v2.3):** responses will be streamed. Python streams chunks from OpenAI to Spring Boot, which relays them to the frontend over SSE while accumulating the full message to persist it once the stream ends. The frontend never talks to the AI service directly.
 ---
 
 ## 🛠️ Tech Stack
@@ -50,10 +51,11 @@ The project is divided into three independent layers that communicate over HTTP:
 ### Backend (Main API)
 | Technology | Purpose |
 |---|---|
-| Java 25 | Language |
+| Java 21 | Language |
 | Spring Boot 3.4 | Main framework |
 | Spring Data JPA + Hibernate | Database ORM |
 | Spring WebClient | Inter-service HTTP calls |
+| MapStruct + Lombok | DTO/entity mapping and boilerplate reduction |
 | PostgreSQL 16 | Relational database |
 | Maven | Dependency management |
 
@@ -84,8 +86,9 @@ The project is divided into three independent layers that communicate over HTTP:
 |---|---|---|---|
 | **v1.0** | 1 | Foundation & First AI Call | REST APIs, inter-service communication, OpenAI basics |
 | **v2.1** | 2.1 | Context Window | Conversation history, context windows, tokens, persistence ← *current* |
-| **v2.2** | 2.2 | LLM Engineering | System prompts, structured output, streaming, error handling, retries, token tracking |
-| **v2.3** | 2.3 | Context Engineering | Token budget, conversation summarization, dynamic context |
+| **v2.2** | 2.2 | LLM Engineering | System prompts, structured output, error handling, retries, token tracking ← *current* |
+| **v2.3** | 2.3 | Streaming & Delivery | OpenAI streaming, FastAPI StreamingResponse, SSE, Spring WebClient + Flux, Vue streaming, persistence on completion |
+| **v2.4** | 2.4 | Context Engineering | Token budget, conversation summarization, dynamic context |
 | **v3.0** | 3 | Knowledge Base | Full notes CRUD, document import, frontend for notes |
 | **v4.0** | 4 | Embeddings + Vector DB | pgvector, OpenAI embeddings API, chunking, tiktoken |
 | **v5.0** | 5 | RAG | Built from scratch — query processing, vector search, relevant chunks injected as context |
@@ -101,7 +104,7 @@ The project is divided into three independent layers that communicate over HTTP:
 ## 🚀 Getting Started
 
 ### Prerequisites
-- Java 25+
+- Java 21+
 - Node.js 24+ and pnpm
 - Python 3.14+
 - PostgreSQL 16+
@@ -117,7 +120,7 @@ cd personal-knowledge-base
 cd backend
 # Configure your database in src/main/resources/application.properties
 ./mvnw spring-boot:run
-# Runs on http://localhost:8080
+# Runs on http://localhost:8081
 ```
 
 ### 3. Frontend (Vue 3)
@@ -135,8 +138,8 @@ python -m venv venv
 source venv/Scripts/activate  # Windows
 pip install -r requirements.txt
 # Add your OpenAI API key to .env: OPENAI_API_KEY=your-key-here
-uvicorn main:app --reload --port 8000
-# Runs on http://localhost:8000
+uvicorn main:app --reload --port 8080
+# Runs on http://localhost:8080
 ```
 
 ---
@@ -145,14 +148,26 @@ uvicorn main:app --reload --port 8000
 
 ### Backend — `application.properties`
 ```properties
+server.port=8081
+ 
 spring.datasource.url=jdbc:postgresql://localhost:5432/pkb
 spring.datasource.username=postgres
 spring.datasource.password=your_password
+ 
+# URL of the Python AI service
+python.service.url.api=http://localhost:8080
 ```
 
 ### AI Service — `.env`
 ```
 OPENAI_API_KEY=your-openai-api-key
+OPENAI_MODEL=gpt-4o-mini
+# Generation settings (temperature, max tokens, top_p, ...) go here too
+```
+
+### Frontend — `.env`
+```
+VITE_AI_API_URL=http://localhost:8081/api/v1
 ```
 
 ---
@@ -175,8 +190,9 @@ personal-knowledge-base/
 
 ## 🔄 Current Status
 
-**v2.2 — LLM Engineering** *(in progress)*
+**v2.3 — Streaming & Delivery** *(in progress)*
  
 - ✅ v1.0 complete — Vue chat UI, Spring Boot API, Python microservice and OpenAI integration all connected and working
-- ✅ v2.1 complete — conversation history implemented, last 9 messages + current sent to model, token tracking in place
-- 🔄 In progress: v2.2 — LLM Engineering (system prompts, structured output, streaming)
+- ✅ v2.1 complete — conversation history persisted, last 9 messages + current sent to the model, token tracking, conversation sidebar
+- ✅ v2.2 complete — system prompts, structured output, error handling, retries, token tracking
+- 🔄 v2.3 in progress — Streaming & Delivery (separate branch, merged after v2.2 is tagged on `main`)
