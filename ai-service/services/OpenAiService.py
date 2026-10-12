@@ -1,5 +1,6 @@
 import os
 import time
+import logging
 from openai import (
     OpenAI,
     RateLimitError,
@@ -17,7 +18,6 @@ from exceptions.AIServiceException import (
             AITimeoutException,
             AIServiceException
         )
-import logging
 from typing import List
 from services.TokenizerService import TokenizerService
 

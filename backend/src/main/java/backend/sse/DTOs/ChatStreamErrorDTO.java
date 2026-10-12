@@ -10,6 +10,10 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+/**
+ * Data Transfer Object for Error Event Type for the SSE architecture.
+ * Contains the information from the OpenAI Stream response in case of error.
+ */
 public class ChatStreamErrorDTO {
 
     @NotBlank(message = "Error code cannot be null")

@@ -10,6 +10,10 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+/**
+ * Data Transfer Object for Content Event Type for the SSE architecture.
+ * Contains the content information from each stream chunk from the AI Service request.
+ */
 public class ChatStreamContentDTO {
 
     @NotBlank(message = "content can not be blank")

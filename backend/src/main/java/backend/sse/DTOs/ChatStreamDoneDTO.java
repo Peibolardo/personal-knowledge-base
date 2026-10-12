@@ -12,7 +12,8 @@ import lombok.NoArgsConstructor;
 @Builder
 /**
  * Data Transfer Object for Done Event Type for the SSE architecture.
- * Contains information regarding the token used and marks the end of the Stream response. */
+ * Contains information regarding the token used and marks the end of the Stream response.
+ * */
 public class ChatStreamDoneDTO {
 
     @JsonProperty("tokens_prompt")
