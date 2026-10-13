@@ -7,4 +7,3 @@ Contains the information from the OpenAI Stream response in case of error.
 class ChatStreamError(BaseModel):
     message: str
     code: str
-    retryable: bool

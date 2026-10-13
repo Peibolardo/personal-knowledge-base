@@ -51,6 +51,8 @@ Purpose: Send a request to OpenIA service and receive the information as chunks 
 Request Body:
 context: (Required) List[Message]
 service: Injected service dependencies to make use of them
+
+Returns streamed events
 """
 @router.post("/stream")
 async def send_message_to_api_stream(

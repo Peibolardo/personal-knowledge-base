@@ -30,5 +30,5 @@ replay_pid*
 
 /frontend/.env
 
-/ai-service/services/streaming_experiment.py
+/ai-service/utils/streaming_experiment.py
 
