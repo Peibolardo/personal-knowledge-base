@@ -12,6 +12,13 @@ from typing import List
 from DTOs.Message import Message
 from collections.abc import AsyncIterator
 from services.TokenizerService import TokenizerService
+from DTOs.streaming import (
+    ChatStreamEventType,
+    ChatStreamContent,
+    ChatStreamMetadata,
+    ChatStreamDone,
+    ChatStreamError
+)
 
 class ChatStreamingService:
 
@@ -54,8 +61,11 @@ class ChatStreamingService:
                 "role": message.role,
                 "content": message.content
             })
+
+        ## Tokens used by the response message
+        tokens_input_message = self.tokenizer.count_tokens(context[-1].content)
         
-        response = await self.client.chat.completions.create(
+        stream = await self.client.chat.completions.create(
                     model = self.model,
                     messages = messages,
                     stream = True,
@@ -63,3 +73,68 @@ class ChatStreamingService:
                         "include_usage": True
                         },
                 )
+
+        metadata = self.buildMetadaStream(tokens_input_message)
+        yield metadata
+
+        tokens_prompt = 0
+        tokens_completion = 0
+        tokens_total = 0
+
+        async for chunk in stream:
+            # Inspect usage even if chunk.choices is empty.
+            if chunk.usage is not None:
+                tokens_prompt = chunk.usage.prompt_tokens
+                tokens_completion = chunk.usage.completion_tokens
+                tokens_total = chunk.usage.total_tokens
+
+            if not chunk.choices:
+                    continue
+            
+            delta = chunk.choices[0].delta
+            content = self.buildContentStream(delta.content)
+
+            yield content
+
+
+
+    '''
+    Function to build Metadata Stream Event
+    '''
+    def build_metadata_stream(self, tokens_request: int) -> ChatStreamMetadata:
+
+        return ChatStreamMetadata(
+            tokens_input_message=tokens_request,
+            model=self.model
+        )
+
+    '''
+    Function to build Content Stream Event
+    '''
+    def build_content_stream(self, content: str) -> ChatStreamContent:
+        return ChatStreamContent(content=content)
+
+    '''
+    Function to build Done Stream Event
+    '''
+    def buildDoneStream(tokens_promptS: int,
+                        tokens_completionS: int,
+                        tokens_totalS: int)-> ChatStreamMetadata:
+
+        return ChatStreamDone(
+            tokens_prompt = tokens_promptS,
+            tokens_completion = tokens_completionS,
+            tokens_total = tokens_totalS
+        )
+
+    '''
+    Function to build Error Stream Event
+    '''
+    def buildErrorStream(messageS: str, codeS : str, retryeableS: bool) -> ChatStreamMetadata:
+
+        return ChatStreamError(
+            message = messageS,
+            code = codeS,
+            retryeable = retryeableS
+
+        )
