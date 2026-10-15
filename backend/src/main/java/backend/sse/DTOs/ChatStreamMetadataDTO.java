@@ -18,7 +18,7 @@ import lombok.NoArgsConstructor;
 @Builder
 public class ChatStreamMetadataDTO {
 
-    @NotBlank(message = "conversationId cannot be blank")
+    // ConversationId will be null when it comes from the IA Service
     private String conversationId;
 
     //Property that return the token cost of the last message sent

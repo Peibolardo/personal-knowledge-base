@@ -22,6 +22,4 @@ public class ChatStreamErrorDTO {
     @NotBlank(message = "Error message cannot be null")
     private String message;
 
-    private boolean retryable;
-
 }

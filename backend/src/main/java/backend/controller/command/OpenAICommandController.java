@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("${api.endpoint.backend}")
+@RequestMapping("${api.endpoint.backend}/chat")
 public class OpenAICommandController implements IOpenAICommandController {
 
     private static final Logger logger = LoggerFactory.getLogger(OpenAICommandController.class);
@@ -39,7 +39,7 @@ public class OpenAICommandController implements IOpenAICommandController {
      * @param chatRequestDTO The ChatRequestDTO with the information to send to the API.
      * @return A ResponseEntity containing the ChatResponseDTO with the response information.
      */
-    @PostMapping("/chat")
+    @PostMapping("")
     public ResponseEntity<ChatResponseDTO> sendMessageToApi(@RequestBody @Valid ChatRequestDTO chatRequestDTO){
 
         logger.info("Received request to send a message to the api");
@@ -48,5 +48,6 @@ public class OpenAICommandController implements IOpenAICommandController {
         return ResponseEntity.ok(chatResponseDTO);
 
     }
+
 
 }
