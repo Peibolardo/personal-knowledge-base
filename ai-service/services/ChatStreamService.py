@@ -44,15 +44,14 @@ class ChatStreamingService:
         #SerializerrService
         self.serializer = SerializeService()
 
-    '''
-    Function that receives a list of Messages with the context and send it to the OpenAI API
-    Receives from the LLM model chunks with different information for each one
+    """
+    Function receives a list of Messages with the context and send it to the OpenAI API
     Sends to the API JSON structured { model: self.model, messages : { role: system, content: self.system_prompt}, { role: user, ...}, {role: assistant. ...}, { role:user, ...}, ... }
-    
-    Stream mode active
-    Return serialized DTOs using the SerializerService based on the ChatStreamEventType Enum
-    '''
-    async def send_message_to_ai_streaming(self, context: List[Message]) -> AsyncIterator[str]:
+
+    Receives response from the LLM model, if 200 then opens streaming
+    Throws exception in case of any error when requesting to the LLM model API 
+    """
+    async def prepare_stream(self, context: List[Message]) -> AsyncIterator[str]:
 
         self.logger.info("Attempting to send a message to the AI")
         self.logger.info("AI API request started | model=%s | messages=%d", self.model, len(context))
@@ -88,6 +87,20 @@ class ChatStreamingService:
         # Stream opening request
         stream = await self.open_stream_with_retries(messages)
 
+        return stream, tokens_input_message, start_time
+        
+
+    '''
+    Function that receives the opened stream and sends the information to the client in a streaming way
+    Receives from the LLM model chunks with different information through the stream
+    
+    Stream mode active
+    Builds DTOs of the different events depending on the information contained.
+    Return serialized DTOs using the SerializerService based on the ChatStreamEventType Enum
+    '''
+    async def send_message_to_ai_streaming(self, stream,tokens_input_message: int, start_time: float, context_length: int) -> AsyncIterator[str]:
+
+        #Builds metdata stream event and sends it to the client
         metadata = self.build_metadata_stream(tokens_input_message)
         yield self.serializer.serialize_event(metadata, ChatStreamEventType.METADATA)
 
@@ -140,7 +153,7 @@ class ChatStreamingService:
                 "prompt_tokens=%d | completion_tokens=%d | total_tokens=%d | "
                 "duration_ms=%.0f",
                 self.model,
-                len(context),
+                context_length,
                 tokens_prompt,
                 tokens_completion,
                 tokens_total,
@@ -221,6 +234,7 @@ class ChatStreamingService:
         
         finally:
             await stream.close()
+
 
     '''
     Function to build Metadata Stream Event

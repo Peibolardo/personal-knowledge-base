@@ -62,7 +62,14 @@ async def send_message_to_api_stream(
 
     logger.info("Received POST request with a message to send it to the LLM model")
 
+    stream, tokens_input_message, start_time = (
+        await service.prepare_stream(context)
+    )
+
+    logger.info("Successfully requested to the LLM and opened the stream")
+
+
     return  StreamingResponse(
-        service.send_message_to_ai_streaming(context),
+        service.send_message_to_ai_streaming(stream, tokens_input_message, start_time, len(context)),
         media_type= "text/event-stream"
         )
