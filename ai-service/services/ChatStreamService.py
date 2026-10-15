@@ -51,7 +51,7 @@ class ChatStreamingService:
     Receives response from the LLM model, if 200 then opens streaming
     Throws exception in case of any error when requesting to the LLM model API 
     """
-    async def prepare_stream(self, context: List[Message]) -> AsyncIterator[str]:
+    async def prepare_stream(self, context: List[Message]):
 
         self.logger.info("Attempting to send a message to the AI")
         self.logger.info("AI API request started | model=%s | messages=%d", self.model, len(context))
@@ -100,15 +100,16 @@ class ChatStreamingService:
     '''
     async def send_message_to_ai_streaming(self, stream,tokens_input_message: int, start_time: float, context_length: int) -> AsyncIterator[str]:
 
-        #Builds metdata stream event and sends it to the client
-        metadata = self.build_metadata_stream(tokens_input_message)
-        yield self.serializer.serialize_event(metadata, ChatStreamEventType.METADATA)
-
-        #Variable to check if the usage has been received in the stream
-        usage_received = False
-
-        #Iterate all chunks from the stream response
         try:
+
+            #Builds metdata stream event and sends it to the client
+            metadata = self.build_metadata_stream(tokens_input_message)
+            yield self.serializer.serialize_event(metadata, ChatStreamEventType.METADATA)
+    
+            #Variable to check if the usage has been received in the stream
+            usage_received = False
+
+            #Iterate all chunks from the stream response
             async for chunk in stream:
         
                 if chunk.choices:

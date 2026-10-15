@@ -5,6 +5,7 @@ from services.ChatStreamService import ChatStreamingService
 from DTOs.Message import Message
 from DTOs.ChatResponse import ChatResponse
 from typing import List
+from functools import lru_cache
 
 import logging
 
@@ -16,10 +17,14 @@ router = APIRouter(
 logger = logging.getLogger("uvicorn.error")
 
 # Dependency injection function (replaces Spring's @Autowired)
+# Added @lru_cache to reuse last instance of the service and avoid creating a new one for each request
+@lru_cache
 def get_openai_service() -> OpenAiService:
     return OpenAiService()
 
 # Dependency injection function (replaces Spring's @Autowired)
+# Added @lru_cache to reuse last instance of the service and avoid creating a new one for each request
+@lru_cache
 def get_chat_streaming_service() -> ChatStreamingService:
     return ChatStreamingService()
 
