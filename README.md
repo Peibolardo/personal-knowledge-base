@@ -86,7 +86,7 @@ The project is divided into three independent layers that communicate over HTTP:
 |---|---|---|---|
 | **v1.0** | 1 | Foundation & First AI Call | REST APIs, inter-service communication, OpenAI basics |
 | **v2.1** | 2.1 | Context Window | Conversation history, context windows, tokens, persistence ← *current* |
-| **v2.2** | 2.2 | LLM Engineering | System prompts, structured output, error handling, retries, token tracking ← *current* |
+| **v2.2** | 2.2 | LLM Engineering | System prompts, structured output, error handling, retries, token tracking |
 | **v2.3** | 2.3 | Streaming & Delivery | OpenAI streaming, FastAPI StreamingResponse, SSE, Spring WebClient + Flux, Vue streaming, persistence on completion |
 | **v2.4** | 2.4 | Context Engineering | Token budget, conversation summarization, dynamic context |
 | **v3.0** | 3 | Knowledge Base | Full notes CRUD, document import, frontend for notes |
