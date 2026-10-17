@@ -14,7 +14,7 @@ public class ChatStreamEventSerializer {
 
     private final ObjectMapper objectMapper;
 
-    public ChatStreamEventSerializer(ChatStreamEventType chatStreamEventType, ObjectMapper objectMapper) {
+    public ChatStreamEventSerializer(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
     }
 

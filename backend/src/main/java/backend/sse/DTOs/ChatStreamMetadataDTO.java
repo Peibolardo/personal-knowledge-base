@@ -25,7 +25,7 @@ public class ChatStreamMetadataDTO {
     @JsonProperty("tokens_input_message")
     private Integer tokensInputMessage;
 
-    @JsonProperty("model_used")
+    @JsonProperty("model")
     @NotBlank(message = "Model cannot be blank")
     @Size(max = 255, message = "Model must not exceed 255 characters")
     private String model;

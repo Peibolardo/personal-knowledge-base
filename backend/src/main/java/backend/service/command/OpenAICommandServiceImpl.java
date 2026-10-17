@@ -19,7 +19,9 @@ import backend.utils.externalServiceServices.ExternalAiService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.stereotype.Service;
+import reactor.core.publisher.Flux;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -37,6 +39,8 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
     private final MessageChatRequestMapper chatRequestMapper;
     private final MessageChatResponseMapper chatResponseMapper;
     private final MessageMapper messageMapper;
+
+    private String actualContent;
 
     public OpenAICommandServiceImpl(MessageRepository messageRepository, ConversationRepository conversationRepository, ExternalAiService externalAiService, MessageChatRequestMapper chatRequestMapper, MessageChatResponseMapper chatResponseMapper, MessageMapper messageMapper) {
         this.messageRepository = messageRepository;
@@ -57,6 +61,60 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
      * @throws ExternalServiceOperationException If an exception occurs in the API Service
      */
     public ChatResponseDTO sendMessageToApi(ChatRequestDTO chatRequestDTO){
+
+        // 1. Prepare the context
+        PreparedContext preparedContext = prepareContext(chatRequestDTO);
+
+        // 2. Save the requestMessage Message object
+        Message messageRequest = preparedContext.requestMessage;
+
+        // 2.Send the context to the API and try to receive the response
+        ChatResponseDTO responseDTO = externalAiService.sendMessageToAi(preparedContext.context);
+
+        // 4.Check if the response exists
+        if(responseDTO == null){
+            throw new ConflictException("There was no response for this request");
+        }
+
+        // 5. Save the request message into the database
+        messageRequest.setTokenCount(responseDTO.getTokensInputMessage());
+        messageRepository.save(messageRequest);
+
+        // 6. Save the response message
+        Message messageResponse = chatResponseMapper.toMessage(responseDTO);
+        messageResponse.setConversation(messageRequest.getConversation());
+        messageResponse.setRole("assistant");
+        messageRepository.save(messageResponse);
+
+        // 7. Set conversationId before sending back to the front
+        responseDTO.setConversationId(messageRequest.getConversation().getId());
+
+        // 8. Return the response DTO
+        return responseDTO;
+
+    }
+
+
+    public Flux<ServerSentEvent<String>> sendMessageToApiStreaming(ChatRequestDTO chatRequestDTO){
+
+        // 1. Prepare the context
+        PreparedContext preparedContext = prepareContext(chatRequestDTO);
+
+        // 2. Save the requestMessage Message object
+        Message messageRequest = preparedContext.requestMessage;
+
+        // 3. Send the context to the API and receive the Stream/Flux response
+        return externalAiService.streamingMessageToAi(preparedContext.context);
+
+    }
+
+
+    /**
+     * Function to prepare the context window to send to the AI
+     * @param chatRequestDTO DTO of the request send by the user
+     * @return PreparedContext record with the Message of requestMessage object and the List of Message with the context
+     */
+    private PreparedContext prepareContext(ChatRequestDTO chatRequestDTO){
 
         // 1. Initialize a list to store the context window
         List<MessageDTO> messageDTOList = new ArrayList<MessageDTO>();
@@ -86,30 +144,15 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
             messageDTOList.add(messageDTO);
         }
 
-        // 6.Send the context to the API and try to receive the response
-        ChatResponseDTO responseDTO = externalAiService.sendMessageToAi(messageDTOList);
-
-        // 7.Check if the response exists
-        if(responseDTO == null){
-            throw new ConflictException("There was no response for this request");
-        }
-
-        // 8. Save the request message into the database
-        messageRequest.setTokenCount(responseDTO.getTokensInputMessage());
-        messageRepository.save(messageRequest);
-
-        // 9. Save the response message
-        Message messageResponse = chatResponseMapper.toMessage(responseDTO);
-        messageResponse.setConversation(messageRequest.getConversation());
-        messageResponse.setRole("assistant");
-        messageRepository.save(messageResponse);
-
-        // 10. Set conversationId before sending back to the front
-        responseDTO.setConversationId(messageRequest.getConversation().getId());
-
-        return responseDTO;
+        return new PreparedContext(messageRequest, messageDTOList);
 
     }
+
+    /**
+     * Groups the user message entity and the prepared context
+     * so both can be returned from prepareContext().
+     */
+    private record PreparedContext(Message requestMessage, List<MessageDTO> context){}
 
     /**
      * Method to check if the message belongs to the first of a conversation or not
@@ -143,6 +186,24 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
      */
     private String generateTitle(String message) {
         return message.length() > 30 ? message.substring(0, 30) + "..." : message;
+    }
+
+    /*
+    private Flux<ServerSentEvent<String>> handleEvent(ServerSentEvent<String> sse, Message messageRequest){
+
+
+
+    }
+    */
+
+    /**
+     * Small helper function to save the content of the message being responded by the AI Service
+      * @param eventContent The actual event content to save
+     */
+    private void saveMessageContent(String eventContent){
+
+        this.actualContent.concat(eventContent);
+
     }
 
 }

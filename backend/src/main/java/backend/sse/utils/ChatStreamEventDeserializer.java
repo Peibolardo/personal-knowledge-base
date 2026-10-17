@@ -26,43 +26,34 @@ public class ChatStreamEventDeserializer {
 
     /**
      * Deserialize method to convert Streaming JSON events to Stream event DTOs
-     * Utilize JsonNode to extract information in different nodes
-     * Compares the "event" node with ChatStreamEventType to choose to what object to deserialize
      *
-     * @param json Streaming event in JSON format
+     * @param eventName Is the event to deserialize
+     * @param data Event information
      * @return Streaming event Object
      * @throws IllegalArgumentException in case there is no "event" or "data"
      * @throws IllegalStateException if the deserialize process could not be performed
      */
-    public Object deserialize(String json) {
+    public Object deserialize(String eventName, String data) {
+
+        if (eventName == null || data == null) {
+            throw new IllegalArgumentException("Stream event without name or data");
+        }
 
         try {
-            JsonNode rootNode = objectMapper.readTree(json);
 
-            JsonNode eventNode = rootNode.get("event");
-            JsonNode dataNode = rootNode.get("data");
-
-            if (eventNode == null || !eventNode.isTextual()){
-                throw new IllegalArgumentException("There is no event in the JSON to deserialize");
-            }
-
-            if (dataNode == null || dataNode.isNull()){
-                throw new IllegalArgumentException("There is no data in the JSON to deserialize");
-            }
-
-            ChatStreamEventType eventType = ChatStreamEventType.valueOf(eventNode.asText().toUpperCase(Locale.ROOT));
+            ChatStreamEventType eventType = ChatStreamEventType.valueOf(eventName.toUpperCase(Locale.ROOT));
 
             return switch (eventType) {
-                case METADATA -> objectMapper.treeToValue(dataNode,
+                case METADATA -> objectMapper.readValue(data,
                         ChatStreamMetadataDTO.class
                 );
-                case DONE -> objectMapper.treeToValue(dataNode,
+                case DONE -> objectMapper.readValue(data,
                         ChatStreamDoneDTO.class
                 );
-                case ERROR -> objectMapper.treeToValue(dataNode,
+                case ERROR -> objectMapper.readValue(data,
                         ChatStreamErrorDTO.class
                 );
-                case CONTENT -> objectMapper.treeToValue(dataNode,
+                case CONTENT -> objectMapper.readValue(data,
                         ChatStreamContentDTO.class
                 );
                 default -> throw new IllegalArgumentException(
