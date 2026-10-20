@@ -15,6 +15,12 @@ import backend.model.Message;
 import backend.repository.ConversationRepository;
 import backend.repository.MessageRepository;
 import backend.service.interfaces.OpenAICommandService;
+import backend.sse.DTOs.ChatStreamContentDTO;
+import backend.sse.DTOs.ChatStreamDoneDTO;
+import backend.sse.DTOs.ChatStreamErrorDTO;
+import backend.sse.DTOs.ChatStreamMetadataDTO;
+import backend.sse.utils.ChatStreamEventDeserializer;
+import backend.sse.utils.ChatStreamEventSerializer;
 import backend.utils.externalServiceServices.ExternalAiService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -39,16 +45,18 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
     private final MessageChatRequestMapper chatRequestMapper;
     private final MessageChatResponseMapper chatResponseMapper;
     private final MessageMapper messageMapper;
+    private final ChatStreamEventSerializer chatStreamEventSerializer;
+    private final ChatStreamEventDeserializer chatStreamEventDeserializer;
 
-    private String actualContent;
-
-    public OpenAICommandServiceImpl(MessageRepository messageRepository, ConversationRepository conversationRepository, ExternalAiService externalAiService, MessageChatRequestMapper chatRequestMapper, MessageChatResponseMapper chatResponseMapper, MessageMapper messageMapper) {
+    public OpenAICommandServiceImpl(MessageRepository messageRepository, ConversationRepository conversationRepository, ExternalAiService externalAiService, MessageChatRequestMapper chatRequestMapper, MessageChatResponseMapper chatResponseMapper, MessageMapper messageMapper, ChatStreamEventSerializer chatStreamEventSerializer, ChatStreamEventDeserializer chatStreamEventDeserializer) {
         this.messageRepository = messageRepository;
         this.conversationRepository = conversationRepository;
         this.externalAiService = externalAiService;
         this.chatRequestMapper = chatRequestMapper;
         this.chatResponseMapper = chatResponseMapper;
         this.messageMapper = messageMapper;
+        this.chatStreamEventSerializer = chatStreamEventSerializer;
+        this.chatStreamEventDeserializer = chatStreamEventDeserializer;
     }
 
     /**
@@ -103,10 +111,15 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
         // 2. Save the requestMessage Message object
         Message messageRequest = preparedContext.requestMessage;
 
+        StreamState state = new StreamState();
+
         // 3. Send the context to the API and receive the Stream/Flux response
-        return externalAiService.streamingMessageToAi(preparedContext.context);
+        return externalAiService.streamingMessageToAi(preparedContext.context)
+                .concatMap(sse -> handleEvent(sse, messageRequest, state));
 
     }
+
+
 
 
     /**
@@ -165,7 +178,7 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
 
     /**
      * Method to get or create a new conversation for the messages
-     * It checks if there is any conversationId passed down and create one if it doesnt, otherwise it fetches it from the database
+     * It checks if there is any conversationId passed down and create one if it doesn't, otherwise it fetches it from the database
      * @param conversationId The unique identifier of the conversation
      * @param message The first message from the conversation
      * @return Conversation Object
@@ -188,22 +201,114 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
         return message.length() > 30 ? message.substring(0, 30) + "..." : message;
     }
 
-    /*
-    private Flux<ServerSentEvent<String>> handleEvent(ServerSentEvent<String> sse, Message messageRequest){
 
+    private Flux<ServerSentEvent<String>> handleEvent(ServerSentEvent<String> sse, Message messageRequest, StreamState state){
 
+        // Check if there is any data in the event
+        if (sse.data() == null) {
+            return Flux.empty();
+        }
+        String eventType = sse.event() == null ? "" : sse.event();
+
+        Object deserializedObject;
+
+        try{
+            deserializedObject = chatStreamEventDeserializer.deserialize(eventType, sse.data());
+        }
+        catch (IllegalArgumentException e){
+            return Flux.just(createErrorEvent("UPSTREAM_NOT_ACCEPTABLE_OBJECT", "The AI service returned an unsupported event."));
+        }
+        catch (IllegalStateException e){
+            return Flux.just(createErrorEvent("UPSTREAM_NOT_ACCEPTABLE_JSON", "The AI service returned an malformed JSON event."));
+        }
+
+        try{
+
+            switch(deserializedObject){
+                // Save tokens of the request into the messageRequest and add conversationId to the metadata to serialize and send to the frontend
+                case ChatStreamMetadataDTO metadata:
+                    messageRequest.setTokenCount(metadata.getTokensInputMessage());
+                    messageRepository.save(messageRequest);
+                    return Flux.just(createMetadataEvent(messageRequest.getConversation().getId(), metadata.getTokensInputMessage(), metadata.getModel()));
+
+                // Saves the chunk content into the actual responseMessage String
+                case ChatStreamContentDTO content:
+                    state.responseMessage.append(content.getContent());
+                    return Flux.just(sse);
+
+                case ChatStreamErrorDTO errorDTO:
+
+                    return Flux.just(sse);
+
+                case ChatStreamDoneDTO doneDTO:
+
+                    Message requestMessage = new Message();
+                    requestMessage.setContent(state.responseMessage.toString());
+                    requestMessage.setConversation(messageRequest.getConversation());
+                    requestMessage.setTokenCount(doneDTO.getTokensCompletion());
+                    requestMessage.setRole("assistant");
+                    messageRepository.save(requestMessage);
+                    return Flux.just(sse);
+
+                default: {
+                    return Flux.just(createErrorEvent(
+                            "UNSUPPORTED_EVENT_OBJECT",
+                            "The deserialized object has an unsupported type."
+                    ));
+                }
+
+            }
+
+        }catch(Exception e){
+            logger.error("Could not handle the sse event");
+            throw new InvalidRequestException("Could not handle the SSE event");
+        }
 
     }
-    */
 
     /**
-     * Small helper function to save the content of the message being responded by the AI Service
-      * @param eventContent The actual event content to save
+     * Helper function to build a ServerSentEvent for ChatStreamErrorDTO
+     * @param code exception code
+     * @param message exception message
+     * @return ServerSentEvent With the Error Event Object serialized
      */
-    private void saveMessageContent(String eventContent){
+    private ServerSentEvent<String> createErrorEvent(String code, String message){
 
-        this.actualContent.concat(eventContent);
+        ChatStreamErrorDTO chatStreamErrorDTO = new ChatStreamErrorDTO(code, message);
+
+        return ServerSentEvent.<String>builder()
+                .event("error")
+                .data(chatStreamEventSerializer.serialize(chatStreamErrorDTO))
+                .build();
 
     }
+
+    /**
+     * Helper function to build a ServerSentEvent for ChatStreamMetadataDTO
+     * @param conversationId conversationId of the message
+     * @param tokensInputMessage tokens used in the request message
+     * @param model of thje LLM used
+     * @return ServerSentEvent With the Metadata Event Object serialized
+     */
+    private ServerSentEvent<String> createMetadataEvent(String conversationId, Integer tokensInputMessage, String model){
+
+        ChatStreamMetadataDTO chatStreamMetadataDTO = new ChatStreamMetadataDTO(conversationId, tokensInputMessage, model);
+
+        return ServerSentEvent.<String>builder()
+                .event("metadata")
+                .data(chatStreamEventSerializer.serialize(chatStreamMetadataDTO))
+                .build();
+
+    }
+
+    /**
+     * Small class to create a String to save the message for every Stream request
+     */
+    private static class StreamState {
+
+        private final StringBuilder responseMessage = new StringBuilder();
+
+    }
+
 
 }
