@@ -52,7 +52,20 @@ public class OpenAICommandController implements IOpenAICommandController {
 
     }
 
-
+    /**
+     * POST /api/v1/chat/stream
+     * Purpose: Send a message to the API and receive the response in Stream way
+     * Request Body:
+     * chatRequestDTO : (Required) ChatRequestDTO
+     * Responses:
+     * 400 Bad Request: if missing parameters or invalid data.
+     * 500 Internal Server Error.
+     * 502 External Service Error: If there is some exception in the external service flow.
+     * 503 External Service Unreachable: If the Service is down or cant reach it.
+     *
+     * @param chatRequestDTO The ChatRequestDTO with the information to send to the API.
+     * @return ServerSentEvent<String> with the event passed by the Stream
+     */
     @PostMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<ServerSentEvent<String>> sendMessageToApiStreaming(@RequestBody @Valid ChatRequestDTO chatRequestDTO){
 

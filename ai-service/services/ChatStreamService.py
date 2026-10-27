@@ -15,13 +15,11 @@ from DTOs.Message import Message
 from collections.abc import AsyncIterator
 from services.TokenizerService import TokenizerService
 from services.SerializeService import SerializeService
-from DTOs.streaming import (
-    ChatStreamEventType,
-    ChatStreamContent,
-    ChatStreamMetadata,
-    ChatStreamDone,
-    ChatStreamError
-)
+from DTOs.streaming.ChatStreamEventType import ChatStreamEventType
+from DTOs.streaming.ChatStreamContent import ChatStreamContent
+from DTOs.streaming.ChatStreamMetadata import ChatStreamMetadata
+from DTOs.streaming.ChatStreamDone import ChatStreamDone
+from DTOs.streaming.ChatStreamError import ChatStreamError
 from exceptions.AIServiceException import (
             AIRateLimitException,
             AIAuthenticationException,

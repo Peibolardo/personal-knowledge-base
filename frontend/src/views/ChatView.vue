@@ -71,7 +71,10 @@
             </div>
 
             <!-- Loading bubble (new message in-flight) -->
-            <div v-if="loading" class="d-flex justify-start align-start ga-2 mb-5">
+            <div
+              v-if="loading && !receivingContent"
+              class="d-flex justify-start align-start ga-2 mb-5"
+            >
               <v-avatar color="surface-variant" size="32" class="mt-1">
                 <v-icon size="18">mdi-robot-outline</v-icon>
               </v-avatar>
@@ -115,7 +118,7 @@
             hide-details
             density="comfortable"
             :disabled="loading"
-            @keydown.enter.exact.prevent="submit"
+            @keydown.enter.exact.prevent="submitStream"
           >
             <template #append-inner>
               <v-btn
@@ -126,7 +129,7 @@
                 rounded="lg"
                 :disabled="!inputText.trim() || loading"
                 :loading="loading"
-                @click="submit"
+                @click="submitStream"
               />
             </template>
           </v-textarea>
@@ -144,14 +147,14 @@
 import { ref, nextTick } from 'vue'
 import { useAiApi } from '@/composables/useAiApi'
 import { useConversation } from '@/composables/useConversation'
-import ConversationSidebar from '@/components/ConversationSidebar.vue'
+import ConversationSidebar from '@/components/ConversationSideBar.vue'
 
 interface DisplayMessage {
   role: 'user' | 'assistant'
   content: string
 }
 
-const { sendMessageToApi } = useAiApi()
+const { sendMessageToApi, sendMessageStreaming } = useAiApi()
 const { getAllMessages } = useConversation()
 
 const messages = ref<DisplayMessage[]>([])
@@ -161,6 +164,7 @@ const loadingHistory = ref(false)
 const error = ref<string | null>(null)
 const messagesArea = ref<HTMLElement | null>(null)
 const sidebarRef = ref<InstanceType<typeof ConversationSidebar> | null>(null)
+const receivingContent = ref(false)
 
 function scrollToBottom() {
   nextTick(() => {
@@ -170,6 +174,10 @@ function scrollToBottom() {
   })
 }
 
+/**
+ * Sends a message to the AI API endpoint
+ * Displays the completely message received.
+ */
 async function submit() {
   const text = inputText.value.trim()
   if (!text || loading.value) return
@@ -196,10 +204,85 @@ async function submit() {
   } catch {
     error.value = 'Something went wrong. Make sure the backend services are running.'
   } finally {
+    
     loading.value = false
     scrollToBottom()
   }
 }
+
+
+/**
+ * Sends a message using the streaming endpoint.
+ * Displays the assistant's response progressively as content chunks arrive.
+ * Handles streaming errors and restores the input when the request finishes.
+ */
+async function submitStream() {
+  const text = inputText.value.trim()
+  if (!text || loading.value) return
+
+  const isFirstMessage = messages.value.length === 0
+
+  // Display the user's message and prepare the assistant's response.
+  messages.value.push({ role: 'user', content: text })
+
+  const assistantMessage: DisplayMessage = {
+    role: 'assistant',
+    content: ''
+  }
+  messages.value.push(assistantMessage)
+
+  inputText.value = ''
+  loading.value = true
+  error.value = null
+  receivingContent.value = false
+
+  // Tracks whether the streaming method completed successfully.
+  let streamCompleted = false
+
+  scrollToBottom()
+
+  try {
+    await sendMessageStreaming(
+      text,
+      (chunk) => {
+        // Append each incoming chunk to the existing assistant message.
+        receivingContent.value = true
+        assistantMessage.content += chunk
+        scrollToBottom()
+      },
+      (message) => {
+        // Display an error received through the SSE stream.
+        error.value = message
+      }
+    )
+
+    streamCompleted = true
+    
+    // Refresh the sidebar after creating a new conversation.
+    if (isFirstMessage) {
+      await sidebarRef.value?.loadConversations()
+    }
+  } catch (err) {
+    console.error('Streaming request failed:', err)
+    error.value =
+      'Something went wrong. Make sure the backend services are running.'
+  } finally {
+
+    if (!streamCompleted && !assistantMessage.content) {
+      const lastMessage = messages.value[messages.value.length - 1]
+
+      if (lastMessage === assistantMessage) {
+        messages.value.pop()
+      }
+    }
+
+    loading.value = false
+    receivingContent.value = false
+    scrollToBottom()
+
+  }
+}
+
 
 async function handleConversationSelect(conversationId: string) {
   loadingHistory.value = true

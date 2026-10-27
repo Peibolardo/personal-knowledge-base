@@ -9,6 +9,7 @@ export const useAiApiStore = defineStore('ai-api', () =>{
 const axiosInstance = useAxios({ baseURL: import.meta.env.VITE_AI_API_URL })
 
     const conversationStore = useConversationStore()
+
     /**
      * POST a request to the AI Api and retrieve a response from it
      * @param chatRequest DTO that contains the message to send
@@ -37,8 +38,37 @@ const axiosInstance = useAxios({ baseURL: import.meta.env.VITE_AI_API_URL })
         }
     }
 
+    /**
+     * POST a request to the AI Api and retrieve a Stream response from it
+     * @param chatRequest DTO that contains the message to send
+     * @returns Promise<Response> With the event stream response from the AI
+     */
+    async function sendMessageStream(chatRequest: ChatRequest): Promise<Response> {
+
+        console.log("Trying to send a Message to open AI using streaming")
+        const response = await fetch(`${import.meta.env.VITE_AI_API_URL}/chat/stream`, 
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'text/event-stream'
+                },
+                body: JSON.stringify(chatRequest),
+            }
+        )
+
+        if (!response.ok) {
+            throw new Error(`Streaming request failed: HTTP ${response.status}`)
+        }
+
+        return response
+
+    }
+       
+
     return{
-        sendMessage
+        sendMessage,
+        sendMessageStream
     }
     
 })

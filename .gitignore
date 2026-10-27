@@ -34,3 +34,6 @@ replay_pid*
 
 /ai-service/utils/streaming_experiment.py
 
+# Python cache
+__pycache__/
+*.py[cod]
