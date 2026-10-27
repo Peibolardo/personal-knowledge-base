@@ -53,7 +53,7 @@
               </div>
 
               <!-- AI message -->
-              <div v-else class="d-flex justify-start align-start ga-2">
+              <div v-else-if="msg.content" class="d-flex justify-start align-start ga-2">
                 <v-avatar color="surface-variant" size="32" class="mt-1">
                   <v-icon size="18">mdi-robot-outline</v-icon>
                 </v-avatar>
@@ -71,7 +71,10 @@
             </div>
 
             <!-- Loading bubble (new message in-flight) -->
-            <div v-if="loading" class="d-flex justify-start align-start ga-2 mb-5">
+            <div
+              v-if="loading && !receivingContent"
+              class="d-flex justify-start align-start ga-2 mb-5"
+            >
               <v-avatar color="surface-variant" size="32" class="mt-1">
                 <v-icon size="18">mdi-robot-outline</v-icon>
               </v-avatar>
@@ -114,19 +117,19 @@
             max-rows="5"
             hide-details
             density="comfortable"
-            :disabled="loading"
-            @keydown.enter.exact.prevent="submit"
+            :readonly="loading"
+            @keydown.enter.exact.prevent="submitStream"
           >
             <template #append-inner>
               <v-btn
-                :icon="loading ? undefined : 'mdi-send'"
-                color="primary"
+                :icon="loading ? 'mdi-stop' : 'mdi-send'"
+                :color="loading ? 'secondary' : 'primary'"
                 variant="flat"
                 size="small"
                 rounded="lg"
-                :disabled="!inputText.trim() || loading"
-                :loading="loading"
-                @click="submit"
+                :disabled="!loading && !inputText.trim()"
+                :loading="false"
+                @click.stop="handleSendButtonClick"
               />
             </template>
           </v-textarea>
@@ -134,7 +137,6 @@
             Enter to send · Shift+Enter for new line
           </p>
         </div>
-
       </v-container>
     </v-main>
   </v-app>
@@ -144,14 +146,14 @@
 import { ref, nextTick } from 'vue'
 import { useAiApi } from '@/composables/useAiApi'
 import { useConversation } from '@/composables/useConversation'
-import ConversationSidebar from '@/components/ConversationSidebar.vue'
+import ConversationSidebar from '@/components/ConversationSideBar.vue'
 
 interface DisplayMessage {
   role: 'user' | 'assistant'
   content: string
 }
 
-const { sendMessageToApi } = useAiApi()
+const { sendMessageToApi, sendMessageStreaming, abortStreaming } = useAiApi()
 const { getAllMessages } = useConversation()
 
 const messages = ref<DisplayMessage[]>([])
@@ -161,6 +163,7 @@ const loadingHistory = ref(false)
 const error = ref<string | null>(null)
 const messagesArea = ref<HTMLElement | null>(null)
 const sidebarRef = ref<InstanceType<typeof ConversationSidebar> | null>(null)
+const receivingContent = ref(false)
 
 function scrollToBottom() {
   nextTick(() => {
@@ -170,6 +173,10 @@ function scrollToBottom() {
   })
 }
 
+/**
+ * Sends a message to the AI API endpoint
+ * Displays the completely message received.
+ */
 async function submit() {
   const text = inputText.value.trim()
   if (!text || loading.value) return
@@ -196,10 +203,84 @@ async function submit() {
   } catch {
     error.value = 'Something went wrong. Make sure the backend services are running.'
   } finally {
+    
     loading.value = false
     scrollToBottom()
   }
 }
+
+
+/**
+ * Sends a message using the streaming endpoint.
+ * Displays the assistant's response progressively as content chunks arrive.
+ * Handles streaming errors and restores the input when the request finishes.
+ */
+async function submitStream() {
+  const text = inputText.value.trim()
+  if (!text || loading.value) return
+
+  const isFirstMessage = messages.value.length === 0
+
+  // Add the user's message.
+  messages.value.push({ role: 'user', content: text })
+
+  // Add an empty assistant message that will receive the streamed chunks.
+  messages.value.push({ role: 'assistant', content: '' })
+
+  // Save the index of the assistant message, not the user's message.
+  const assistantMessageIndex = messages.value.length - 1
+
+  inputText.value = ''
+  loading.value = true
+  error.value = null
+  receivingContent.value = false
+
+  let streamCompleted = false
+
+  scrollToBottom()
+
+  try {
+    await sendMessageStreaming(
+      text,
+      (chunk) => {
+        console.log(`[${new Date().toISOString()}] Received chunk:`, chunk)
+
+        receivingContent.value = true
+        messages.value[assistantMessageIndex].content += chunk
+        scrollToBottom()
+      },
+      (message) => {
+        error.value = message
+      }
+    )
+
+    streamCompleted = true
+
+    if (isFirstMessage) {
+      await sidebarRef.value?.loadConversations()
+    }
+  } catch (err) {
+    const isCancellation = err instanceof DOMException && err.name === 'AbortError'
+    if (isCancellation) {
+        console.info('The user cancelled the streaming request.')
+    } else {
+        console.error('Streaming request failed:', err)
+
+        error.value =
+            'Something went wrong. Make sure the backend services are running.'
+    }
+  } finally {
+    // Remove the empty assistant placeholder only if the stream failed.
+    if (!streamCompleted &&!messages.value[assistantMessageIndex]?.content) {
+      messages.value.splice(assistantMessageIndex, 1)
+    }
+
+    loading.value = false
+    receivingContent.value = false
+    scrollToBottom()
+  }
+}
+
 
 async function handleConversationSelect(conversationId: string) {
   loadingHistory.value = true
@@ -215,6 +296,14 @@ async function handleConversationSelect(conversationId: string) {
     error.value = 'Could not load the conversation history.'
   } finally {
     loadingHistory.value = false
+  }
+}
+
+function handleSendButtonClick() {
+  if (loading.value) {
+    abortStreaming()
+  } else {
+    submitStream()
   }
 }
 

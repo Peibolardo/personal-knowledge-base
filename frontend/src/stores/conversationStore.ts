@@ -74,11 +74,20 @@ export const useConversationStore = defineStore('conversationStore', () =>{
         activeConversationId.value = conversationId
     }
 
+    /**
+     * Sets the active conversation
+     * @param conversationId The unique identifier of the conversation
+     */
+    function setActiveConversationId(conversationId: string) {
+        activeConversationId.value = conversationId
+    }
+
     return {
         getAllConversations,
         getAllMessagesFromConversation,
         resetConversation,
         selectConversation,
+        setActiveConversationId,
         activeConversationId
     }
 

@@ -28,5 +28,14 @@ replay_pid*
 
 /ai-service/.env
 
+/ai-service/.venv
+
 /frontend/.env
 
+/frontend/node_modules
+
+/ai-service/utils/streaming_experiment.py
+
+# Python cache
+__pycache__/
+*.py[cod]

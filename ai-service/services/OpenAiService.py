@@ -1,5 +1,6 @@
 import os
 import time
+import logging
 from openai import (
     OpenAI,
     RateLimitError,
@@ -17,7 +18,6 @@ from exceptions.AIServiceException import (
             AITimeoutException,
             AIServiceException
         )
-import logging
 from typing import List
 from services.TokenizerService import TokenizerService
 
@@ -77,7 +77,7 @@ class OpenAiService:
                             messages = messages
                         )
 
-                ## Tokens used by the response message
+                ## Tokens used by the request message
                 tokens_input_message = self.tokenizer.count_tokens(context[-1].content)
 
                 duration_ms = (time.perf_counter() - start_time) * 1000
