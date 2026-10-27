@@ -31,7 +31,7 @@ The project is divided into three independent layers that communicate over HTTP:
 [ PostgreSQL ]              :5432  ←── Used by Spring Boot
 ```
 
-> **Planned (v2.3):** responses will be streamed. Python streams chunks from OpenAI to Spring Boot, which relays them to the frontend over SSE while accumulating the full message to persist it once the stream ends. The frontend never talks to the AI service directly.
+> **Integrated (v2.3):** responses will be streamed. Python streams chunks from OpenAI to Spring Boot, which relays them to the frontend over SSE while accumulating the full message to persist it once the stream ends. The frontend never talks to the AI service directly.
 ---
 
 ## 🛠️ Tech Stack
@@ -190,9 +190,10 @@ personal-knowledge-base/
 
 ## 🔄 Current Status
 
-**v2.3 — Streaming & Delivery** *(in progress)*
+**v2.4 — Context Engineering** *(in progress)*
  
 - ✅ v1.0 complete — Vue chat UI, Spring Boot API, Python microservice and OpenAI integration all connected and working
 - ✅ v2.1 complete — conversation history persisted, last 9 messages + current sent to the model, token tracking, conversation sidebar
 - ✅ v2.2 complete — system prompts, structured output, error handling, retries, token tracking
-- 🔄 v2.3 in progress — Streaming & Delivery (separate branch, merged after v2.2 is tagged on `main`)
+- ✅ v2.3 complete — OpenAI streaming, FastAPI StreamingResponse, SSE, Spring WebClient + Flux, Vue streaming, persistence on completion
+- 🔄 v2.4 in progress — Token budget, conversation summarization, dynamic context 
