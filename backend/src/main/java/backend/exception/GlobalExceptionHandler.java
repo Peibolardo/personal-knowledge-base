@@ -12,8 +12,10 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
+import java.io.IOException;
 import java.net.URI;
 import java.util.List;
+import java.util.Locale;
 import java.util.stream.Collectors;
 
 
@@ -126,7 +128,19 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     public ResponseEntity<ProblemDetail> handleAllUncaughtException(Exception ex, WebRequest request) {
 
         String correlationId = MDC.get(CORRELATION_ID_KEY);
-        //ToDo: Send a request ot the SystemLogs service to save the exception.
+
+        // A disconnected SSE client is not an application error.
+        if (isClientDisconnect(ex)) {
+            logger.debug(
+                    "Client disconnected during response streaming [{}]: {}",
+                    correlationId,
+                    ex.getMessage()
+            );
+
+            // Do not attempt to write a response to the closed connection.
+            return null;
+        }
+
         logger.error("An unexpected internal error occurred [{}]: ", correlationId, ex);
 
         ProblemDetail problemDetail = ProblemDetail.forStatus(HttpStatus.INTERNAL_SERVER_ERROR);
@@ -136,5 +150,43 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         problemDetail.setProperty(CORRELATION_ID_KEY, correlationId);
 
         return new ResponseEntity<>(problemDetail, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    /**
+     * Helper for handleAllUncaughtException to avoid IOException
+     * @param ex Exception passed by the method
+     * @return if the exception is caused duo to a Client disconnection
+     */
+    private boolean isClientDisconnect(Throwable ex) {
+        Throwable current = ex;
+
+        while (current != null) {
+            String className = current.getClass().getName();
+
+            // Known Spring MVC / Tomcat client-disconnect exceptions.
+            if (className.equals(
+                    "org.apache.catalina.connector.ClientAbortException")
+                    || className.equals(
+                    "org.springframework.web.context.request.async.AsyncRequestNotUsableException")) {
+                return true;
+            }
+
+            // Some environments expose the disconnect as a plain IOException.
+            if (current instanceof IOException && current.getMessage() != null) {
+                String message = current.getMessage().toLowerCase(Locale.ROOT);
+
+                if (message.contains("broken pipe")
+                        || message.contains("connection reset")
+                        || message.contains("connection aborted")
+                        || message.contains("forcibly closed")
+                        || message.contains("anulado una conexión")) {
+                    return true;
+                }
+            }
+
+            current = current.getCause();
+        }
+
+        return false;
     }
 }
