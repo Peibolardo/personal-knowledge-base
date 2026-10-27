@@ -80,8 +80,6 @@ The project is divided into three independent layers that communicate over HTTP:
 
 ## 📋 Project Phases
 
-| **1** | Foundation & First AI Call | REST APIs, inter-service communication, OpenAI basics |
-
 | Version | Phase | Name | Key Concepts |
 |---|---|---|---|
 | **v1.0** | 1 | Foundation & First AI Call | REST APIs, inter-service communication, OpenAI basics |
