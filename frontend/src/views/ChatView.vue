@@ -137,6 +137,18 @@
             Enter to send · Shift+Enter for new line
           </p>
         </div>
+        <div v-if="loading" class="d-flex justify-end mb-2">
+          <v-btn
+            prepend-icon="mdi-stop"
+            variant="outlined"
+            color="secondary"
+            size="small"
+            :disabled="!loading"
+            @click="abortStreaming"
+          >
+            Cancel response
+          </v-btn>
+        </div>
 
       </v-container>
     </v-main>
@@ -154,7 +166,7 @@ interface DisplayMessage {
   content: string
 }
 
-const { sendMessageToApi, sendMessageStreaming } = useAiApi()
+const { sendMessageToApi, sendMessageStreaming, abortStreaming } = useAiApi()
 const { getAllMessages } = useConversation()
 
 const messages = ref<DisplayMessage[]>([])
@@ -261,15 +273,18 @@ async function submitStream() {
       await sidebarRef.value?.loadConversations()
     }
   } catch (err) {
-    console.error('Streaming request failed:', err)
-    error.value =
-      'Something went wrong. Make sure the backend services are running.'
+    const isCancellation = err instanceof DOMException && err.name === 'AbortError'
+    if (isCancellation) {
+        console.info('The user cancelled the streaming request.')
+    } else {
+        console.error('Streaming request failed:', err)
+
+        error.value =
+            'Something went wrong. Make sure the backend services are running.'
+    }
   } finally {
     // Remove the empty assistant placeholder only if the stream failed.
-    if (
-      !streamCompleted &&
-      !messages.value[assistantMessageIndex]?.content
-    ) {
+    if (!streamCompleted &&!messages.value[assistantMessageIndex]?.content) {
       messages.value.splice(assistantMessageIndex, 1)
     }
 

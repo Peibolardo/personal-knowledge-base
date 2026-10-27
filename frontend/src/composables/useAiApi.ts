@@ -60,7 +60,12 @@ export function useAiApi(){
             while (!streamFinished) {
                 const { value, done: readerDone } = await reader.read()
 
-                if (readerDone) break
+                if (readerDone) {
+                    if (!streamFinished) {
+                        throw new Error('The stream ended before a completion or error event was received.')
+                    }
+                    break
+                }
 
                 buffer += decoder.decode(value, { stream: true })
 
@@ -110,14 +115,24 @@ export function useAiApi(){
                 }
             }
         } finally {
+            
+            await reader.cancel()
             reader.releaseLock()
+            AiApiStore.finishMessageStreaming()
         }
+    }
+
+    function abortStreaming() {
+
+        AiApiStore.cancelMessageStreaming()
+
     }
         
 
     return {
         sendMessageToApi,
-        sendMessageStreaming
+        sendMessageStreaming,
+        abortStreaming
     }
 
 

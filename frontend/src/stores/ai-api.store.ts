@@ -10,6 +10,9 @@ const axiosInstance = useAxios({ baseURL: import.meta.env.VITE_AI_API_URL })
 
     const conversationStore = useConversationStore()
 
+    // AbortController to cancel the streaming request if needed 
+    let abortController: AbortController | null = null
+
     /**
      * POST a request to the AI Api and retrieve a response from it
      * @param chatRequest DTO that contains the message to send
@@ -46,6 +49,11 @@ const axiosInstance = useAxios({ baseURL: import.meta.env.VITE_AI_API_URL })
     async function sendMessageStream(chatRequest: ChatRequest): Promise<Response> {
 
         console.log("Trying to send a Message to open AI using streaming")
+
+        const controller = new AbortController()
+        abortController = controller
+
+        try{
         const response = await fetch(`${import.meta.env.VITE_AI_API_URL}/chat/stream`, 
             {
                 method: 'POST',
@@ -54,6 +62,7 @@ const axiosInstance = useAxios({ baseURL: import.meta.env.VITE_AI_API_URL })
                     'Accept': 'text/event-stream'
                 },
                 body: JSON.stringify(chatRequest),
+                signal: abortController.signal
             }
         )
 
@@ -63,12 +72,32 @@ const axiosInstance = useAxios({ baseURL: import.meta.env.VITE_AI_API_URL })
 
         return response
 
+        }
+        catch(error: any){
+
+            // The request may fail before the response headers arrive.
+            if (abortController === controller) {
+                abortController = null
+            }
+
+            throw error
+
+        }
+    }
+    function cancelMessageStreaming() {
+        abortController?.abort();
+    }
+
+    function finishMessageStreaming() {
+        abortController = null
     }
        
 
     return{
         sendMessage,
-        sendMessageStream
+        sendMessageStream,
+        cancelMessageStreaming,
+        finishMessageStreaming
     }
     
 })
