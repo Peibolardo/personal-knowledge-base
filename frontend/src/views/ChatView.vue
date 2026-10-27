@@ -53,7 +53,7 @@
               </div>
 
               <!-- AI message -->
-              <div v-else class="d-flex justify-start align-start ga-2">
+              <div v-else-if="msg.content" class="d-flex justify-start align-start ga-2">
                 <v-avatar color="surface-variant" size="32" class="mt-1">
                   <v-icon size="18">mdi-robot-outline</v-icon>
                 </v-avatar>
@@ -222,21 +222,20 @@ async function submitStream() {
 
   const isFirstMessage = messages.value.length === 0
 
-  // Display the user's message and prepare the assistant's response.
+  // Add the user's message.
   messages.value.push({ role: 'user', content: text })
 
-  const assistantMessage: DisplayMessage = {
-    role: 'assistant',
-    content: ''
-  }
-  messages.value.push(assistantMessage)
+  // Add an empty assistant message that will receive the streamed chunks.
+  messages.value.push({ role: 'assistant', content: '' })
+
+  // Save the index of the assistant message, not the user's message.
+  const assistantMessageIndex = messages.value.length - 1
 
   inputText.value = ''
   loading.value = true
   error.value = null
   receivingContent.value = false
 
-  // Tracks whether the streaming method completed successfully.
   let streamCompleted = false
 
   scrollToBottom()
@@ -245,20 +244,19 @@ async function submitStream() {
     await sendMessageStreaming(
       text,
       (chunk) => {
-        // Append each incoming chunk to the existing assistant message.
+        console.log(`[${new Date().toISOString()}] Received chunk:`, chunk)
+
         receivingContent.value = true
-        assistantMessage.content += chunk
+        messages.value[assistantMessageIndex].content += chunk
         scrollToBottom()
       },
       (message) => {
-        // Display an error received through the SSE stream.
         error.value = message
       }
     )
 
     streamCompleted = true
-    
-    // Refresh the sidebar after creating a new conversation.
+
     if (isFirstMessage) {
       await sidebarRef.value?.loadConversations()
     }
@@ -267,19 +265,17 @@ async function submitStream() {
     error.value =
       'Something went wrong. Make sure the backend services are running.'
   } finally {
-
-    if (!streamCompleted && !assistantMessage.content) {
-      const lastMessage = messages.value[messages.value.length - 1]
-
-      if (lastMessage === assistantMessage) {
-        messages.value.pop()
-      }
+    // Remove the empty assistant placeholder only if the stream failed.
+    if (
+      !streamCompleted &&
+      !messages.value[assistantMessageIndex]?.content
+    ) {
+      messages.value.splice(assistantMessageIndex, 1)
     }
 
     loading.value = false
     receivingContent.value = false
     scrollToBottom()
-
   }
 }
 
