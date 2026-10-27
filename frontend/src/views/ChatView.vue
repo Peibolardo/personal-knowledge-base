@@ -117,19 +117,19 @@
             max-rows="5"
             hide-details
             density="comfortable"
-            :disabled="loading"
+            :readonly="loading"
             @keydown.enter.exact.prevent="submitStream"
           >
             <template #append-inner>
               <v-btn
-                :icon="loading ? undefined : 'mdi-send'"
-                color="primary"
+                :icon="loading ? 'mdi-stop' : 'mdi-send'"
+                :color="loading ? 'secondary' : 'primary'"
                 variant="flat"
                 size="small"
                 rounded="lg"
-                :disabled="!inputText.trim() || loading"
-                :loading="loading"
-                @click="submitStream"
+                :disabled="!loading && !inputText.trim()"
+                :loading="false"
+                @click.stop="handleSendButtonClick"
               />
             </template>
           </v-textarea>
@@ -137,19 +137,6 @@
             Enter to send · Shift+Enter for new line
           </p>
         </div>
-        <div v-if="loading" class="d-flex justify-end mb-2">
-          <v-btn
-            prepend-icon="mdi-stop"
-            variant="outlined"
-            color="secondary"
-            size="small"
-            :disabled="!loading"
-            @click="abortStreaming"
-          >
-            Cancel response
-          </v-btn>
-        </div>
-
       </v-container>
     </v-main>
   </v-app>
@@ -309,6 +296,14 @@ async function handleConversationSelect(conversationId: string) {
     error.value = 'Could not load the conversation history.'
   } finally {
     loadingHistory.value = false
+  }
+}
+
+function handleSendButtonClick() {
+  if (loading.value) {
+    abortStreaming()
+  } else {
+    submitStream()
   }
 }
 
