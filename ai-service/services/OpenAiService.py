@@ -20,8 +20,24 @@ from exceptions.AIServiceException import (
         )
 from typing import List
 from services.TokenizerService import TokenizerService
+from DTOs.ConversationSummary import ConversationSummary
+from pathlib import Path
 
 class OpenAiService:
+
+    '''
+    Directory for storing prompts
+    __file__ identifies the Python file where this code runs.
+    resolve() method returns the absolute path of the file.
+    parent.parent navigates two levels up in the directory structure.
+    The final path is constructed by appending "prompts" to the parent directory.
+    '''
+    PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
+
+    # Read the summary system prompt from a file
+    SUMMARY_SYSTEM_PROMPT = (
+        PROMPTS_DIR / "summary_system_prompt.txt"
+    ).read_text(encoding="utf-8")
 
     #Constructor to initialize the class
     def __init__(self):
@@ -32,6 +48,7 @@ class OpenAiService:
 
         #TokenizerService with the model established in the env file
         self.tokenizer = TokenizerService(self.model)
+        self.summary_system_prompt = self.SUMMARY_SYSTEM_PROMPT
 
     """
     Function that receives a list of Messages with the context and send it to the OpenAI API
@@ -144,5 +161,78 @@ class OpenAiService:
             time.sleep(delay)
             delay += delay
 
+    """
+    Function that receives a ConversationSummary DTO with the current summary of the conversation and the new messages to
+    """
+    def summarize_conversation(self, conversationSummary: ConversationSummary) -> str:
+
+        #Set up maximum attempts to retryable routine
+        max_attempts = 3
+
+        #Set up seconds to sleep in case of retry routine
+        delay = 1
+
+        for attempt in range(1, max_attempts + 1):
+
+            try: 
+
+                self.logger.info("Attempting to summarize the conversation")
+
+                messages = []
+                
+                #Check if the system prompt is null
+                if not self.system_prompt:
+                    raise ValueError("SYSTEM_PROMPT environment variable is not configured")
+
+                messages.append({
+                    "role": "system",
+                    "content": self.system_prompt
+                })
+
+                for msg in conversationSummary.messageDTOList:
+                    messages.append({
+                        "role": msg.role.value,
+                        "content": msg.content
+                })
+
+                response = self.client.chat.completions.create(
+                            model = self.model,
+                            messages = messages
+                        )
+
+
+            except APIConnectionError as e:
+                            self.logger.exception("Could not connect to the API")
+                            if attempt == max_attempts:
+                                raise AIConnectionException(
+                                    "Could not connect to AI service"
+                                ) from e
+            
+            except APITimeoutError as e:
+                self.logger.exception("Too long for the API to give an answer")
+                if attempt == max_attempts:
+                    raise AITimeoutException(
+                        "AI service request timed out"
+                    ) from e
+
+                
+            except AuthenticationError as e:
+                self.logger.exception("Could not authenticate the user")
+                raise AIAuthenticationException(
+                    "AI service authentication failed"
+                ) from e
+            
+            except APIError as e:
+                self.logger.exception("Error with the API")
+                raise AIServiceException(
+                    "Unexpected AI service error",
+                ) from e
+
+            except Exception:
+                self.logger.exception("Unexpected error...")
+                raise
+
+            time.sleep(delay)
+            delay += delay
 
 
