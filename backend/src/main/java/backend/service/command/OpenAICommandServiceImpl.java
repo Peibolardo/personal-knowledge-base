@@ -24,6 +24,7 @@ import backend.sse.utils.ChatStreamEventSerializer;
 import backend.utils.externalServiceServices.ExternalAiService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.stereotype.Service;
@@ -50,7 +51,10 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
     private final ChatStreamEventSerializer chatStreamEventSerializer;
     private final ChatStreamEventDeserializer chatStreamEventDeserializer;
 
-    public OpenAICommandServiceImpl(MessageRepository messageRepository, ConversationRepository conversationRepository, ExternalAiService externalAiService, MessageChatRequestMapper chatRequestMapper, MessageChatResponseMapper chatResponseMapper, MessageMapper messageMapper, ChatStreamEventSerializer chatStreamEventSerializer, ChatStreamEventDeserializer chatStreamEventDeserializer) {
+    private final int maxTokens;
+    private static final int CONTEXT_BATCH_SIZE = 9;
+
+    public OpenAICommandServiceImpl(MessageRepository messageRepository, ConversationRepository conversationRepository, ExternalAiService externalAiService, MessageChatRequestMapper chatRequestMapper, MessageChatResponseMapper chatResponseMapper, MessageMapper messageMapper, ChatStreamEventSerializer chatStreamEventSerializer, ChatStreamEventDeserializer chatStreamEventDeserializer, @Value("${context.max-tokens-request}") int maxTokens) {
         this.messageRepository = messageRepository;
         this.conversationRepository = conversationRepository;
         this.externalAiService = externalAiService;
@@ -59,6 +63,8 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
         this.messageMapper = messageMapper;
         this.chatStreamEventSerializer = chatStreamEventSerializer;
         this.chatStreamEventDeserializer = chatStreamEventDeserializer;
+
+        this.maxTokens = maxTokens;
     }
 
     /**
@@ -195,10 +201,43 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
         else{
             // 5.2.1 Checks if the conversationId is valid
             validateUuids(chatRequestDTO.getConversationId());
-            List<Message> contextMessages = messageRepository.getContextMessages(messageRequest.getConversation().getId(), PageRequest.of(0, 9));
+
+            // 5.2.2 Retrieve the context messages and add it until no messages can be retrieved or the sum is higher than the Max permitted
+            boolean budgetReached = false;
+            int tokenCount = 0;
+            int actualPage = 0;
+            List<Message> completeContext = new ArrayList<Message>();
+
+            while(!budgetReached){
+
+                List<Message> contextMessages = messageRepository.getContextMessages(messageRequest.getConversation().getId(), PageRequest.of(actualPage, CONTEXT_BATCH_SIZE));
+
+                if(contextMessages.isEmpty()){
+                    break;
+                }
+
+                for(Message message: contextMessages ) {
+
+                    if(tokenCount + message.getTokenCount() <= this.maxTokens){
+                        completeContext.add(message);
+                        tokenCount += message.getTokenCount();
+                    }
+                    else{
+                        budgetReached = true;
+                        break;
+                    }
+
+                }
+
+                if (!budgetReached) {
+                    actualPage++;
+                }
+
+            }
+
             // 5.2.2 order properly the messages reversing the order fetched
-            Collections.reverse(contextMessages);
-            List<MessageDTO> contextMessagesDTO = messageMapper.toDtoList(contextMessages);
+            Collections.reverse(completeContext);
+            List<MessageDTO> contextMessagesDTO = messageMapper.toDtoList(completeContext);
             messageDTOList.addAll(contextMessagesDTO);
             messageDTOList.add(messageDTO);
         }
