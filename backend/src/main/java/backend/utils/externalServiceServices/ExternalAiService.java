@@ -1,6 +1,7 @@
 package backend.utils.externalServiceServices;
 
 import backend.dto.ChatResponseDTO;
+import backend.dto.ConversationSummaryDTO;
 import backend.dto.MessageDTO;
 import backend.exception.customExceptions.ExternalServiceOperationException;
 import backend.exception.customExceptions.UnreachableExternalServiceException;
@@ -10,6 +11,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -107,6 +109,30 @@ public class ExternalAiService {
                             WebClientRequestException.class,
                             e -> new UnreachableExternalServiceException("AI service unreachable")
                     );
+
+    }
+
+    /**
+     * Attempts to send the summary of a conversation and the newest messages to add into the summary
+     * @param conversationSummaryDTO DTO containing both List of messages and the actual summary
+     * @return String with the new summary done by the AI
+     */
+    public String sendSummaryToTheLLM(ConversationSummaryDTO conversationSummaryDTO){
+
+        try{
+            logger.info("Sending the summary to the AI Service through the Feign client");
+            return aiApiFeignClient.sendSummaryToTheLLM(conversationSummaryDTO);
+
+        }
+        catch(RetryableException e){
+            logger.warn("Failed to reach the API AI Service when trying to summarize: {}", e.toString());
+            throw new UnreachableExternalServiceException("External service is unreachable..");
+        }
+        catch (Exception e) {
+            logger.warn("Unexpected error response from the API AI Service trying to summarize with returning exception: {}", e.toString());
+            throw new ExternalServiceOperationException("Unexpected external service error");
+        }
+
 
     }
 

@@ -78,3 +78,18 @@ async def send_message_to_api_stream(
         service.send_message_to_ai_streaming(stream, tokens_input_message, start_time, len(context)),
         media_type= "text/event-stream"
         )
+
+
+@router.post("/summarize")
+async def summarize_conversation(
+    context: List[Message],
+    service: OpenAiService = Depends(get_openai_service)
+    ) -> ChatResponse:
+    
+    logger.info("Received the request to summarize the conversation")
+
+    response = service.summarize_conversation(context)
+
+    logger.info("Successfully received the summarized response from the AI API")
+
+    return response

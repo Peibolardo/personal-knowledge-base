@@ -1,6 +1,7 @@
 package backend.utils.externalServiceServices;
 
 import backend.dto.ChatResponseDTO;
+import backend.dto.ConversationSummaryDTO;
 import backend.dto.MessageDTO;
 import jakarta.validation.Valid;
 import org.springframework.cloud.openfeign.FeignClient;
@@ -19,5 +20,9 @@ public interface AiApiFeignClient {
      */
     @PostMapping(PREFIX)
     ChatResponseDTO sendMessageToAi(@RequestBody @Valid List<MessageDTO> messageDTOList);
+
+    @PostMapping(PREFIX + "/summarize")
+    String sendSummaryToTheLLM(@RequestBody @Valid ConversationSummaryDTO conversationSummaryDTO);
+
 }
 

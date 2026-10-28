@@ -26,6 +26,13 @@ public class Conversation{
     @Column(name = "title", updatable = true)
     private String title;
 
+    @Column(name = "summary", columnDefinition = "TEXT")
+    private String summary;
+
+    // Not storing complete object due to this function being used just for summarize
+    @Column(name = "last_summarized_message_id")
+    private UUID lastSummarizedMessageId;
+
     @Column(name = "modification_date", nullable = false)
     private Instant modificationDate;
 
