@@ -1,12 +1,11 @@
 package backend.utils.externalServiceServices;
 
 import backend.dto.ChatResponseDTO;
-import backend.dto.ConversationSummaryDTO;
+import backend.dto.ChatContextDTO;
 import backend.dto.MessageDTO;
 import backend.exception.customExceptions.ExternalServiceOperationException;
 import backend.exception.customExceptions.UnreachableExternalServiceException;
 import feign.RetryableException;
-import org.mapstruct.Qualifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.ParameterizedTypeReference;
@@ -114,14 +113,14 @@ public class ExternalAiService {
 
     /**
      * Attempts to send the summary of a conversation and the newest messages to add into the summary
-     * @param conversationSummaryDTO DTO containing both List of messages and the actual summary
+     * @param chatContextDTO DTO containing both List of messages and the actual summary
      * @return String with the new summary done by the AI
      */
-    public String sendSummaryToTheLLM(ConversationSummaryDTO conversationSummaryDTO){
+    public String sendSummaryToTheLLM(ChatContextDTO chatContextDTO){
 
         try{
             logger.info("Sending the summary to the AI Service through the Feign client");
-            return aiApiFeignClient.sendSummaryToTheLLM(conversationSummaryDTO);
+            return aiApiFeignClient.sendSummaryToTheLLM(chatContextDTO);
 
         }
         catch(RetryableException e){

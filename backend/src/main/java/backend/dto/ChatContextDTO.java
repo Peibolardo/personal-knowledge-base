@@ -9,13 +9,13 @@ import lombok.NoArgsConstructor;
 import java.util.List;
 
 /**
- * Data Transfer Object to send the actual summary of a conversation and the new messages to add to the summary
+ * Data Transfer Object to send the context of a conversation with the actual summary of a conversation and the messages
  */
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
 @Builder
-public class ConversationSummaryDTO {
+public class ChatContextDTO {
 
     private String currentSummary;
 

@@ -21,7 +21,7 @@ from exceptions.AIServiceException import (
         )
 from typing import List
 from services.TokenizerService import TokenizerService
-from DTOs.ConversationSummary import ConversationSummary
+from DTOs.ChatContext import ChatContext
 from pathlib import Path
 
 class OpenAiService:
@@ -163,9 +163,9 @@ class OpenAiService:
             delay += delay
 
     """
-    Function that receives a ConversationSummary DTO with the current summary of the conversation and the new messages to
+    Function that receives a ChatContext DTO with the current summary of the conversation and the new messages to
     """
-    def summarize_conversation(self, conversationSummary: ConversationSummary) -> str:
+    def summarize_conversation(self, chatContext: ChatContext) -> str:
 
         #Set up maximum attempts to retryable routine
         max_attempts = 3
@@ -186,7 +186,7 @@ class OpenAiService:
                     raise ValueError("SYSTEM_PROMPT environment variable is not configured")
 
                 # Create a list with the new messages to summarize
-                for msg in conversationSummary.messageDTOList:
+                for msg in chatContext.messageDTOList:
                     newMessages.append({
                         "role": msg.role.value,
                         "content": msg.content
@@ -194,7 +194,7 @@ class OpenAiService:
 
                 # Create a JSON with the current summary and the new messages to summarize
                 summary_input = {
-                    "current_summary": conversationSummary.currentSummary,
+                    "current_summary": chatContext.currentSummary,
                     "new_messages": newMessages
                 }
 

@@ -2,7 +2,7 @@ package backend.service.command;
 
 import backend.dto.ChatRequestDTO;
 import backend.dto.ChatResponseDTO;
-import backend.dto.ConversationSummaryDTO;
+import backend.dto.ChatContextDTO;
 import backend.dto.MessageDTO;
 import backend.exception.customExceptions.ConflictException;
 import backend.exception.customExceptions.ExternalServiceOperationException;
@@ -529,7 +529,7 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
 
                 List <MessageDTO> completeContextDTO = messageMapper.toDtoList(completeContext);
                 // Build the DTO to send with summary and the list of new messages
-                ConversationSummaryDTO conversationSummary = new ConversationSummaryDTO(conversation.getSummary(), completeContextDTO);
+                ChatContextDTO conversationSummary = new ChatContextDTO(conversation.getSummary(), completeContextDTO);
 
                 logger.info("Summarizing {} new messages. Oldest included ID: {}, previous checkpoint: {}", completeContext.size(), newestMessageIncluded.getId(), conversation.getLastSummarizedMessageId());
 
