@@ -465,13 +465,21 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
     }
 
     /**
-     * Receives a Conversation object to summarize the content of the messages belonging to a conversation into summary field
-     * @param conversation The conversation Object to receive the new summary
+     * Generates or updates the conversation summary when the accumulated token count of unsummarized messages reaches the configured summary threshold.
+     *
+     * Retrieves messages in batches, starting with the most recent, until it reaches the last summarized message or there are no more messages.
+     * The selected messages are then reordered chronologically and sent to the AI service together with the existing summary, if any.
+     *
+     * After the AI service successfully generates the updated summary, the conversation's summary and last summarized message ID are updated and
+     * persisted. If the threshold is not reached, no changes are made.
+     *
+     * @param conversation the conversation whose summary should be generated or updated
      */
     private void summarizeConversation(Conversation conversation){
 
         if(conversation != null) {
 
+            // Create variables to hold the token counting, the page to retrieve the pageable data and checker if the context threshold was reached
             boolean reachedLimit = false;
             int tokenCount = 0;
             int actualPage = 0;
@@ -512,16 +520,16 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
                 }
 
             }
-
+            // If the tokens counted is above the threshold then call the AI Service to summarize the conversation with the new messages and old summary
             if(tokenCount >= summaryThreshold && lastMessageIncluded != null){
 
                 // Order the messages from oldest to newest
                 Collections.reverse(completeContext);
 
                 List <MessageDTO> completeContextDTO = messageMapper.toDtoList(completeContext);
-
+                // Build the DTO to send with summary and the list of new messages
                 ConversationSummaryDTO conversationSummary = new ConversationSummaryDTO(conversation.getSummary(), completeContextDTO);
-
+                // Receive the new summary to save
                 String newSummary = externalAiService.sendSummaryToTheLLM(conversationSummary);
 
                 conversation.setSummary(newSummary);
