@@ -10,5 +10,5 @@ messageDTOList: A list of Message DTOs that represent the new messages to be add
 """
 class ConversationSummary(BaseModel):
 
-    currentSummary: str 
+    currentSummary: str | None = None
     messageDTOList: List[Message] = []  # empty on first message

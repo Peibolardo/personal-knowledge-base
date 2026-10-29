@@ -488,7 +488,7 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
             List<Message> completeContext = new ArrayList<Message>();
 
             //Contains the last message included in the summary
-            Message lastMessageIncluded = null;
+            Message newestMessageIncluded  = null;
 
             while(!reachedLimit) {
 
@@ -510,9 +510,10 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
                     completeContext.add(message);
                     tokenCount += message.getTokenCount();
 
-                    // Sets the message as the last included
-                    lastMessageIncluded = message;
-
+                    // Sets the message as the first included
+                    if (newestMessageIncluded == null) {
+                        newestMessageIncluded = message;
+                    }
                 }
 
                 if(!reachedLimit ){
@@ -521,7 +522,7 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
 
             }
             // If the tokens counted is above the threshold then call the AI Service to summarize the conversation with the new messages and old summary
-            if(tokenCount >= summaryThreshold && lastMessageIncluded != null){
+            if(tokenCount >= summaryThreshold && newestMessageIncluded != null){
 
                 // Order the messages from oldest to newest
                 Collections.reverse(completeContext);
@@ -529,11 +530,14 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
                 List <MessageDTO> completeContextDTO = messageMapper.toDtoList(completeContext);
                 // Build the DTO to send with summary and the list of new messages
                 ConversationSummaryDTO conversationSummary = new ConversationSummaryDTO(conversation.getSummary(), completeContextDTO);
+
+                logger.info("Summarizing {} new messages. Oldest included ID: {}, previous checkpoint: {}", completeContext.size(), newestMessageIncluded.getId(), conversation.getLastSummarizedMessageId());
+
                 // Receive the new summary to save
                 String newSummary = externalAiService.sendSummaryToTheLLM(conversationSummary);
 
                 conversation.setSummary(newSummary);
-                conversation.setLastSummarizedMessageId(lastMessageIncluded.getId());
+                conversation.setLastSummarizedMessageId(newestMessageIncluded.getId());
 
                 conversationRepository.save(conversation);
 
