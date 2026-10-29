@@ -1,6 +1,7 @@
 import os
 import time
 import logging
+import json
 from openai import (
     OpenAI,
     RateLimitError,
@@ -178,27 +179,61 @@ class OpenAiService:
 
                 self.logger.info("Attempting to summarize the conversation")
 
-                messages = []
+                newMessages = []
                 
                 #Check if the system prompt is null
-                if not self.system_prompt:
+                if not self.summary_system_prompt:
                     raise ValueError("SYSTEM_PROMPT environment variable is not configured")
 
-                messages.append({
-                    "role": "system",
-                    "content": self.system_prompt
-                })
-
+                # Create a list with the new messages to summarize
                 for msg in conversationSummary.messageDTOList:
-                    messages.append({
+                    newMessages.append({
                         "role": msg.role.value,
                         "content": msg.content
                 })
 
+                # Create a JSON with the current summary and the new messages to summarize
+                summary_input = {
+                    "current_summary": conversationSummary.currentSummary,
+                    "new_messages": newMessages
+                }
+
+                # Create a list with the system prompt and the user prompt with the current summary and the new messages to summarize
+                messages = [
+                    {
+                        "role": "system",
+                        "content": self.summary_system_prompt
+                    },
+                    {
+                        "role": "user",
+                        "content": json.dumps(
+                            summary_input,
+                            ensure_ascii=False
+                        )
+                    }
+                ]
+
+                self.logger.info("Summarizing conversation with %d new messages", len(newMessages))
+
+                # Send the request to the OpenAI API with the model, the system prompt and the user prompt with the current summary and the new messages to summarize
                 response = self.client.chat.completions.create(
                             model = self.model,
-                            messages = messages
+                            messages = messages,
+                            max_completion_tokens = 1500
                         )
+
+                # Get the updated summary from the response
+                updated_summary = response.choices[0].message.content
+
+                # Check if the updated summary is empty or null, if so, raise an exception
+                if not updated_summary or not updated_summary.strip():
+                    raise AIServiceException(
+                        "AI service returned an empty summary"
+                    )
+
+                self.logger.info("Successfully summarized the conversation")
+                
+                return updated_summary.strip()
 
 
             except APIConnectionError as e:

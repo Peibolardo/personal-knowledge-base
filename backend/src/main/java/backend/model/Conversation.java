@@ -31,7 +31,7 @@ public class Conversation{
 
     // Not storing complete object due to this function being used just for summarize
     @Column(name = "last_summarized_message_id")
-    private UUID lastSummarizedMessageId;
+    private String lastSummarizedMessageId;
 
     @Column(name = "modification_date", nullable = false)
     private Instant modificationDate;

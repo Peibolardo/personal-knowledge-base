@@ -2,6 +2,7 @@ package backend.service.command;
 
 import backend.dto.ChatRequestDTO;
 import backend.dto.ChatResponseDTO;
+import backend.dto.ConversationSummaryDTO;
 import backend.dto.MessageDTO;
 import backend.exception.customExceptions.ConflictException;
 import backend.exception.customExceptions.ExternalServiceOperationException;
@@ -52,9 +53,20 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
     private final ChatStreamEventDeserializer chatStreamEventDeserializer;
 
     private final int maxTokens;
+    private final int summaryThreshold;
     private static final int CONTEXT_BATCH_SIZE = 9;
 
-    public OpenAICommandServiceImpl(MessageRepository messageRepository, ConversationRepository conversationRepository, ExternalAiService externalAiService, MessageChatRequestMapper chatRequestMapper, MessageChatResponseMapper chatResponseMapper, MessageMapper messageMapper, ChatStreamEventSerializer chatStreamEventSerializer, ChatStreamEventDeserializer chatStreamEventDeserializer, @Value("${context.max-tokens-request}") int maxTokens) {
+    public OpenAICommandServiceImpl(MessageRepository messageRepository,
+                                    ConversationRepository conversationRepository,
+                                    ExternalAiService externalAiService,
+                                    MessageChatRequestMapper chatRequestMapper,
+                                    MessageChatResponseMapper chatResponseMapper,
+                                    MessageMapper messageMapper,
+                                    ChatStreamEventSerializer chatStreamEventSerializer,
+                                    ChatStreamEventDeserializer chatStreamEventDeserializer,
+                                    @Value("${context.max-tokens-request}") int maxTokens,
+                                    @Value("${summary.threshold}") int summaryThreshold) {
+
         this.messageRepository = messageRepository;
         this.conversationRepository = conversationRepository;
         this.externalAiService = externalAiService;
@@ -63,8 +75,9 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
         this.messageMapper = messageMapper;
         this.chatStreamEventSerializer = chatStreamEventSerializer;
         this.chatStreamEventDeserializer = chatStreamEventDeserializer;
-
         this.maxTokens = maxTokens;
+        this.summaryThreshold = summaryThreshold;
+
     }
 
     /**
@@ -202,15 +215,16 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
             // 5.2.1 Checks if the conversationId is valid
             validateUuids(chatRequestDTO.getConversationId());
 
-            // 5.2.2 Retrieve the context messages and add it until no messages can be retrieved or the sum is higher than the Max permitted
+            // 5.2.2 Create variables to hold the token counting, the page to retrieve the pageable data and checker if the context threshold was reached
             boolean budgetReached = false;
             int tokenCount = 0;
             int actualPage = 0;
             List<Message> completeContext = new ArrayList<Message>();
 
+            // 5.2.3 Retrieve the context messages and add it until no messages can be retrieved or the sum is higher than the Max permitted
             while(!budgetReached){
 
-                List<Message> contextMessages = messageRepository.getContextMessages(messageRequest.getConversation().getId(), PageRequest.of(actualPage, CONTEXT_BATCH_SIZE));
+                List<Message> contextMessages = messageRepository.getContextMessages(messageRequest.getConversation().getId(), PageRequest.of(actualPage, CONTEXT_BATCH_SIZE) );
 
                 if(contextMessages.isEmpty()){
                     break;
@@ -358,7 +372,8 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
                 case ChatStreamDoneDTO doneDTO:
 
                     return Mono.fromCallable(() -> {
-                                persistMessages(messageRequest, doneDTO, state);
+                                // Actions taken
+                                summarizeConversation(messageRequest.getConversation());
                                 return sse;                                   // forward the original done event
                             })
                             .subscribeOn(Schedulers.boundedElastic())          // blocking JPA lives here
@@ -438,6 +453,77 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
         responseMessage.setTokenCount(doneDTO.getTokensCompletion());
         responseMessage.setRole("assistant");
         messageRepository.save(responseMessage);
+
+    }
+
+    /**
+     * Receives a Conversation object to summarize the content of the messages belonging to a conversation into summary field
+     * @param conversation The conversation Object to receive the new summary
+     */
+    private void summarizeConversation(Conversation conversation){
+
+        if(conversation != null) {
+
+            boolean reachedLimit = false;
+            int tokenCount = 0;
+            int actualPage = 0;
+
+            // New message list to add to the summary
+            List<Message> completeContext = new ArrayList<Message>();
+
+            //Contains the last message included in the summary
+            Message lastMessageIncluded = null;
+
+            while(!reachedLimit) {
+
+                List<Message> newMessages = messageRepository.getContextMessages(conversation.getId(), PageRequest.of(actualPage, CONTEXT_BATCH_SIZE));
+
+                // Check if there is no more messages to iterate
+                if(newMessages.isEmpty()){
+                    reachedLimit = true;
+                    break;
+                }
+
+                for(Message message: newMessages){
+
+                    if( conversation.getLastSummarizedMessageId() != null && message.getId().equals(conversation.getLastSummarizedMessageId())){
+                        reachedLimit = true;
+                        break;
+                    }
+
+                    completeContext.add(message);
+                    tokenCount += message.getTokenCount();
+
+                    // Sets the message as the last included
+                    lastMessageIncluded = message;
+
+                }
+
+                if(!reachedLimit ){
+                    actualPage ++;
+                }
+
+            }
+
+            if(tokenCount >= summaryThreshold && lastMessageIncluded != null){
+
+                // Order the messages from oldest to newest
+                Collections.reverse(completeContext);
+
+                List <MessageDTO> completeContextDTO = messageMapper.toDtoList(completeContext);
+
+                ConversationSummaryDTO conversationSummary = new ConversationSummaryDTO(conversation.getSummary(), completeContextDTO);
+
+                String newSummary = externalAiService.sendSummaryToTheLLM(conversationSummary);
+
+                conversation.setSummary(newSummary);
+                conversation.setLastSummarizedMessageId(lastMessageIncluded.getId());
+
+                conversationRepository.save(conversation);
+
+            }
+
+        }
 
     }
 
