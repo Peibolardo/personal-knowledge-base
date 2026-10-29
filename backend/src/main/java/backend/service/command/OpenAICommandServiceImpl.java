@@ -25,7 +25,10 @@ import backend.sse.utils.ChatStreamEventSerializer;
 import backend.utils.externalServiceServices.ExternalAiService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.task.TaskExecutor;
+import org.springframework.core.task.TaskRejectedException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.stereotype.Service;
@@ -55,6 +58,7 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
     private final int maxTokens;
     private final int summaryThreshold;
     private static final int CONTEXT_BATCH_SIZE = 9;
+    private final TaskExecutor summaryTaskExecutor;
 
     public OpenAICommandServiceImpl(MessageRepository messageRepository,
                                     ConversationRepository conversationRepository,
@@ -65,7 +69,8 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
                                     ChatStreamEventSerializer chatStreamEventSerializer,
                                     ChatStreamEventDeserializer chatStreamEventDeserializer,
                                     @Value("${context.max-tokens-request}") int maxTokens,
-                                    @Value("${summary.threshold}") int summaryThreshold) {
+                                    @Value("${summary.threshold}") int summaryThreshold,
+                                    @Qualifier("summaryTaskExecutor") TaskExecutor summaryTaskExecutor) {
 
         this.messageRepository = messageRepository;
         this.conversationRepository = conversationRepository;
@@ -77,7 +82,7 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
         this.chatStreamEventDeserializer = chatStreamEventDeserializer;
         this.maxTokens = maxTokens;
         this.summaryThreshold = summaryThreshold;
-
+        this.summaryTaskExecutor = summaryTaskExecutor;
     }
 
     /**
@@ -372,8 +377,11 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
                 case ChatStreamDoneDTO doneDTO:
 
                     return Mono.fromCallable(() -> {
-                                // Actions taken
-                                summarizeConversation(messageRequest.getConversation());
+                                // Blocked persistence by Schedulers.boundedElastic()
+                                persistMessages(messageRequest, doneDTO, state);
+                                // Helper method to set summarizeConversation() into a TaskExecutor thread manager
+                                triggerSummarization(messageRequest.getConversation().getId());
+                                // Return the SSE event
                                 return sse;                                   // forward the original done event
                             })
                             .subscribeOn(Schedulers.boundedElastic())          // blocking JPA lives here
@@ -525,6 +533,36 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
 
         }
 
+    }
+
+    /**
+     * Helper to schedules conversation summarization as a background task.
+     * Reloads the conversation inside the task to avoid sharing a potentiallystale JPA entity between threads.
+     *
+     * Summarization failures are logged without interrupting the completed chat.
+     *
+     * @param conversationId ID of the conversation to summarize
+     */
+    private void triggerSummarization(String conversationId) {
+        try {
+            summaryTaskExecutor.execute(() -> {
+                try {
+                    Conversation conversation = conversationRepository.findById(conversationId).orElse(null);
+
+                    if (conversation == null) {
+                        logger.warn("Conversation {} not found for summarization", conversationId);
+                        return;
+                    }
+
+                    summarizeConversation(conversation);
+
+                } catch (Exception e) {
+                    logger.error("Conversation summarization failed for conversation {}", conversationId, e);
+                }
+            });
+        } catch (TaskRejectedException e) {
+            logger.error("Could not schedule summarization for conversation {}", conversationId, e);
+        }
     }
 
     /**

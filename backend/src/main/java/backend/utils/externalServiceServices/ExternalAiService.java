@@ -6,6 +6,7 @@ import backend.dto.MessageDTO;
 import backend.exception.customExceptions.ExternalServiceOperationException;
 import backend.exception.customExceptions.UnreachableExternalServiceException;
 import feign.RetryableException;
+import org.mapstruct.Qualifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.ParameterizedTypeReference;
@@ -28,7 +29,7 @@ public class ExternalAiService {
     private final AiApiFeignClient aiApiFeignClient;
     private final WebClient aiWebClient;
 
-    public ExternalAiService(AiApiFeignClient aiApiFeignClient, WebClient webClient, WebClient aiWebClient) {
+    public ExternalAiService(AiApiFeignClient aiApiFeignClient, WebClient aiWebClient) {
         this.aiApiFeignClient = aiApiFeignClient;
         this.aiWebClient = aiWebClient;
     }
