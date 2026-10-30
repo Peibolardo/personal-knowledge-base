@@ -84,16 +84,16 @@ public class ExternalAiService {
      *         {@code UnreachableExternalServiceException} when communication with the AI service fails.</li>
      * </ul>
      *
-     * @param messageDTOList the conversation messages sent to the AI service
+     * @param chatContextDTO the context DTO with the conversation messages and summary to sent to the AI service
      * @return a Flux emitting SSE events as they arrive from the AI service
      */
-    public Flux<ServerSentEvent<String>> streamingMessageToAi(List<MessageDTO> messageDTOList){
+    public Flux<ServerSentEvent<String>> streamingMessageToAi(ChatContextDTO chatContextDTO){
 
             return aiWebClient.post()
                     .uri("/chat/stream")
                     .contentType(MediaType.APPLICATION_JSON)
                     .accept(MediaType.TEXT_EVENT_STREAM)
-                    .bodyValue(messageDTOList)
+                    .bodyValue(chatContextDTO)
                     .retrieve()
                     .onStatus(HttpStatusCode::isError, resp ->
                             resp.bodyToMono(String.class)

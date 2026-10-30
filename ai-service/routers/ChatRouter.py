@@ -55,14 +55,14 @@ async def send_message_to_api(
 POST /chat/stream
 Purpose: Send a request to OpenIA service and receive the information as chunks via Stream
 Request Body:
-context: (Required) List[Message]
+context: (Required) ChatContext object with the summary of the conversation and the messages
 service: Injected service dependencies to make use of them
 
 Returns streamed events
 """
 @router.post("/stream")
 async def send_message_to_api_stream(
-    context: List[Message],
+    context: ChatContext,
     service: ChatStreamingService = Depends(get_chat_streaming_service)
     ) -> StreamingResponse:
 
@@ -76,7 +76,7 @@ async def send_message_to_api_stream(
 
 
     return  StreamingResponse(
-        service.send_message_to_ai_streaming(stream, tokens_input_message, start_time, len(context)),
+        service.send_message_to_ai_streaming(stream, tokens_input_message, start_time, len(context.messageDTOList)),
         media_type= "text/event-stream"
         )
 

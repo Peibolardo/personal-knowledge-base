@@ -83,6 +83,7 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
         this.maxTokens = maxTokens;
         this.summaryThreshold = summaryThreshold;
         this.summaryTaskExecutor = summaryTaskExecutor;
+
     }
 
     /**
@@ -96,14 +97,14 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
      */
     public ChatResponseDTO sendMessageToApi(ChatRequestDTO chatRequestDTO){
 
-        // 1. Prepare the context
-        PreparedContext preparedContext = prepareContext(chatRequestDTO);
+        // 1. Prepare the context messages
+        PreparedMessages preparedMessages = prepareMessages(chatRequestDTO);
 
         // 2. Save the requestMessage Message object
-        Message messageRequest = preparedContext.requestMessage;
+        Message messageRequest = preparedMessages.requestMessage;
 
         // 2.Send the context to the API and try to receive the response
-        ChatResponseDTO responseDTO = externalAiService.sendMessageToAi(preparedContext.context);
+        ChatResponseDTO responseDTO = externalAiService.sendMessageToAi(preparedMessages.context);
 
         // 4.Check if the response exists
         if(responseDTO == null){
@@ -146,7 +147,7 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
      *    If so, emit a fallback SSE error event; otherwise, complete without emitting anything.
      *
      * Important:
-     * - prepareContext() executes before the deferred publisher is subscribed to.
+     * - prepareMessages() executes before the deferred publisher is subscribed to.
      * - started tracks event emission, not whether the HTTP response has been committed.
      * - concatMap() preserves sequential event processing, which is necessary to accumulate
      *   the assistant's response before persisting it when the done event arrives.
@@ -156,19 +157,22 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
      */
     public Flux<ServerSentEvent<String>> sendMessageToApiStreaming(ChatRequestDTO chatRequestDTO){
 
-        // 1. Prepare the context
-        PreparedContext preparedContext = prepareContext(chatRequestDTO);
+        // 1. Prepare the context messages
+        PreparedMessages preparedMessages = prepareMessages(chatRequestDTO);
+
+        // 2. Set the summary and context messages into the Context DTO to send
+        Conversation conversation = preparedMessages.requestMessage.getConversation();
+        ChatContextDTO chatContextDTO = new ChatContextDTO(conversation.getSummary(), preparedMessages.context);
 
         // 2. Save the requestMessage Message object
-        Message messageRequest = preparedContext.requestMessage;
-
+        Message messageRequest = preparedMessages.requestMessage;
 
         // 3. Send the context to the API and receive the Stream/Flux response
         return Flux.defer(() -> {
 
             StreamState state = new StreamState();   // one per subscription
 
-            return externalAiService.streamingMessageToAi(preparedContext.context)
+            return externalAiService.streamingMessageToAi(chatContextDTO)
                     .concatMap(sse -> handleEvent(sse, messageRequest, state))
                     .onErrorResume(e -> {
                         // nothing sent yet: let GlobalExceptionHandler answer with an HTTP status
@@ -193,11 +197,11 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
     }
 
     /**
-     * Function to prepare the context window to send to the AI
+     * Function to prepare the messages to send to the AI
      * @param chatRequestDTO DTO of the request send by the user
-     * @return PreparedContext record with the Message of requestMessage object and the List of Message with the context
+     * @return PreparedMessages record with the Message of requestMessage object and the List of Message for the context
      */
-    private PreparedContext prepareContext(ChatRequestDTO chatRequestDTO){
+    private PreparedMessages prepareMessages(ChatRequestDTO chatRequestDTO){
 
         // 1. Initialize a list to store the context window
         List<MessageDTO> messageDTOList = new ArrayList<MessageDTO>();
@@ -261,15 +265,15 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
             messageDTOList.add(messageDTO);
         }
 
-        return new PreparedContext(messageRequest, messageDTOList);
+        return new PreparedMessages(messageRequest, messageDTOList);
 
     }
 
     /**
-     * Groups the user message entity and the prepared context
-     * so both can be returned from prepareContext().
+     * Groups the user message entity and the prepared context messages
+     * so both can be returned from prepareMessages().
      */
-    private record PreparedContext(Message requestMessage, List<MessageDTO> context){}
+    private record PreparedMessages(Message requestMessage, List<MessageDTO> context){}
 
     /**
      * Method to check if the message belongs to the first of a conversation or not
