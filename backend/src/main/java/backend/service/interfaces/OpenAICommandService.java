@@ -31,7 +31,7 @@ public interface OpenAICommandService {
      * 3. Use concatMap() to process incoming SSE events sequentially through handleEvent().
      * 4. Use onErrorResume() to distinguish between errors before the first emitted event
      *    and errors occurring after streaming has started. Before the first event, propagate
-     *    the error; afterwards, emit an SSE error event.
+     *    the error; afterward, emit an SSE error event.
      * 5. Use doOnNext() to track whether an event has been emitted and whether a terminal
      *    event (done/error) has been received.
      * 6. Use takeUntil() to forward the terminal event and then stop the upstream stream.

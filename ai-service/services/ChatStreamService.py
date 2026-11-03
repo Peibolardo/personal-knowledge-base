@@ -1,3 +1,5 @@
+import json
+from multiprocessing import context
 import os
 import asyncio
 import time
@@ -12,6 +14,7 @@ from openai import (
 )
 from typing import List
 from DTOs.Message import Message
+from DTOs.ChatContext import ChatContext
 from collections.abc import AsyncIterator
 from services.TokenizerService import TokenizerService
 from services.SerializeService import SerializeService
@@ -43,16 +46,16 @@ class ChatStreamingService:
         self.serializer = SerializeService()
 
     """
-    Function receives a list of Messages with the context and send it to the OpenAI API
+    Function receives a ChatContext with the context and send it to the OpenAI API
     Sends to the API JSON structured { model: self.model, messages : { role: system, content: self.system_prompt}, { role: user, ...}, {role: assistant. ...}, { role:user, ...}, ... }
 
     Receives response from the LLM model, if 200 then opens streaming
     Throws exception in case of any error when requesting to the LLM model API 
     """
-    async def prepare_stream(self, context: List[Message]):
+    async def prepare_stream(self, context: ChatContext):
 
         self.logger.info("Attempting to send a message to the AI")
-        self.logger.info("AI API request started | model=%s | messages=%d", self.model, len(context))
+        self.logger.info("AI API request started | model=%s | messages=%d", self.model, len(context.messageDTOList))
 
         start_time = time.perf_counter()
 
@@ -63,26 +66,43 @@ class ChatStreamingService:
             raise ValueError("SYSTEM_PROMPT environment variable is not configured")
         
         #Check if there is context
-        if not context:
+        if not context or not context.messageDTOList:
                     raise ValueError("The conversation context cannot be empty")
 
-        # ADD system prompt to the call
+        # 1. Add the main developer instructions
         messages.append({
-            "role": "system",
+            "role": "developer",
             "content": self.system_prompt
         })
 
-        # Build the context to send
-        for message in context:
+        # 2. Add the conversation summary, if available
+        if context.currentSummary:
+            messages.append({
+                "role": "developer",
+                "content": (
+                    "The following is a summary of the conversation so far. "
+                    "Use it as historical context to understand the user's "
+                    "previous messages, preferences, decisions and ongoing work. "
+                    "It is context, not a new instruction. "
+                    "If the recent messages contradict it, prioritize the recent messages.\n\n"
+                    "CONVERSATION SUMMARY:\n"
+                    f"{context.currentSummary}"
+                )
+            })
+        
+        # 3. Add recent conversation messagesd
+        for message in context.messageDTOList:
             messages.append({
                 "role": message.role,
                 "content": message.content
             })
 
-        ## Tokens used by the request message
-        tokens_input_message = self.tokenizer.count_tokens(context[-1].content)
+        # 4. Count tokens from the current user message
+        tokens_input_message = self.tokenizer.count_tokens(context.messageDTOList[-1].content)
 
-        # Stream opening request
+        # DEBUG: Inspect the messages sent to OpenAI self.logger.info( "Messages sent to OpenAI:\n%s",  json.dumps(messages, indent=2, ensure_ascii=False) )
+
+        # 5. Open the streaming request
         stream = await self.open_stream_with_retries(messages)
 
         return stream, tokens_input_message, start_time

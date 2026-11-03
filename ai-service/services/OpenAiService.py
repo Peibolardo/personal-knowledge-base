@@ -1,6 +1,7 @@
 import os
 import time
 import logging
+import json
 from openai import (
     OpenAI,
     RateLimitError,
@@ -20,8 +21,24 @@ from exceptions.AIServiceException import (
         )
 from typing import List
 from services.TokenizerService import TokenizerService
+from DTOs.ChatContext import ChatContext
+from pathlib import Path
 
 class OpenAiService:
+
+    '''
+    Directory for storing prompts
+    __file__ identifies the Python file where this code runs.
+    resolve() method returns the absolute path of the file.
+    parent.parent navigates two levels up in the directory structure.
+    The final path is constructed by appending "prompts" to the parent directory.
+    '''
+    PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
+
+    # Read the summary system prompt from a file
+    SUMMARY_SYSTEM_PROMPT = (
+        PROMPTS_DIR / "summary_system_prompt.txt"
+    ).read_text(encoding="utf-8")
 
     #Constructor to initialize the class
     def __init__(self):
@@ -32,6 +49,7 @@ class OpenAiService:
 
         #TokenizerService with the model established in the env file
         self.tokenizer = TokenizerService(self.model)
+        self.summary_system_prompt = self.SUMMARY_SYSTEM_PROMPT
 
     """
     Function that receives a list of Messages with the context and send it to the OpenAI API
@@ -144,5 +162,112 @@ class OpenAiService:
             time.sleep(delay)
             delay += delay
 
+    """
+    Function that receives a ChatContext DTO with the current summary of the conversation and the new messages to
+    """
+    def summarize_conversation(self, chatContext: ChatContext) -> str:
+
+        #Set up maximum attempts to retryable routine
+        max_attempts = 3
+
+        #Set up seconds to sleep in case of retry routine
+        delay = 1
+
+        for attempt in range(1, max_attempts + 1):
+
+            try: 
+
+                self.logger.info("Attempting to summarize the conversation")
+
+                newMessages = []
+                
+                #Check if the system prompt is null
+                if not self.summary_system_prompt:
+                    raise ValueError("SYSTEM_PROMPT environment variable is not configured")
+
+                # Create a list with the new messages to summarize
+                for msg in chatContext.messageDTOList:
+                    newMessages.append({
+                        "role": msg.role.value,
+                        "content": msg.content
+                })
+
+                # Create a JSON with the current summary and the new messages to summarize
+                summary_input = {
+                    "current_summary": chatContext.currentSummary,
+                    "new_messages": newMessages
+                }
+
+                # Create a list with the system prompt and the user prompt with the current summary and the new messages to summarize
+                messages = [
+                    {
+                        "role": "system",
+                        "content": self.summary_system_prompt
+                    },
+                    {
+                        "role": "user",
+                        "content": json.dumps(
+                            summary_input,
+                            ensure_ascii=False
+                        )
+                    }
+                ]
+
+                self.logger.info("Summarizing conversation with %d new messages", len(newMessages))
+
+                # Send the request to the OpenAI API with the model, the system prompt and the user prompt with the current summary and the new messages to summarize
+                response = self.client.chat.completions.create(
+                            model = self.model,
+                            messages = messages,
+                            max_completion_tokens = 1500
+                        )
+
+                # Get the updated summary from the response
+                updated_summary = response.choices[0].message.content
+
+                # Check if the updated summary is empty or null, if so, raise an exception
+                if not updated_summary or not updated_summary.strip():
+                    raise AIServiceException(
+                        "AI service returned an empty summary"
+                    )
+
+                self.logger.info("Successfully summarized the conversation")
+                
+                return updated_summary.strip()
+
+
+            except APIConnectionError as e:
+                            self.logger.exception("Could not connect to the API")
+                            if attempt == max_attempts:
+                                raise AIConnectionException(
+                                    "Could not connect to AI service"
+                                ) from e
+            
+            except APITimeoutError as e:
+                self.logger.exception("Too long for the API to give an answer")
+                if attempt == max_attempts:
+                    raise AITimeoutException(
+                        "AI service request timed out"
+                    ) from e
+
+                
+            except AuthenticationError as e:
+                self.logger.exception("Could not authenticate the user")
+                raise AIAuthenticationException(
+                    "AI service authentication failed"
+                ) from e
+            
+            except APIError as e:
+                self.logger.exception("Error with the API")
+                raise AIServiceException(
+                    "Unexpected AI service error",
+                ) from e
+
+            except Exception:
+                self.logger.exception("Unexpected error...")
+                raise
+
+            time.sleep(delay)
+            delay += delay
 
 

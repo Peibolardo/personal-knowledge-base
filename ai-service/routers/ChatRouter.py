@@ -6,6 +6,7 @@ from DTOs.Message import Message
 from DTOs.ChatResponse import ChatResponse
 from typing import List
 from functools import lru_cache
+from DTOs.ChatContext import ChatContext
 
 import logging
 
@@ -54,14 +55,14 @@ async def send_message_to_api(
 POST /chat/stream
 Purpose: Send a request to OpenIA service and receive the information as chunks via Stream
 Request Body:
-context: (Required) List[Message]
+context: (Required) ChatContext object with the summary of the conversation and the messages
 service: Injected service dependencies to make use of them
 
 Returns streamed events
 """
 @router.post("/stream")
 async def send_message_to_api_stream(
-    context: List[Message],
+    context: ChatContext,
     service: ChatStreamingService = Depends(get_chat_streaming_service)
     ) -> StreamingResponse:
 
@@ -75,6 +76,29 @@ async def send_message_to_api_stream(
 
 
     return  StreamingResponse(
-        service.send_message_to_ai_streaming(stream, tokens_input_message, start_time, len(context)),
+        service.send_message_to_ai_streaming(stream, tokens_input_message, start_time, len(context.messageDTOList)),
         media_type= "text/event-stream"
         )
+
+"""
+POST /chat/summarize
+Purpose: Send a request to OpenIA service with the current summary of the conversation and the new messages to summarize and receive the response.
+Request Body:
+chatContext: (Required) ChatContext
+service: Injected service dependencies to make use of them
+
+Returns ChatResponse with the summarized conversation
+"""
+@router.post("/summarize")
+async def summarize_conversation(
+    chatContext: ChatContext,
+    service: OpenAiService = Depends(get_openai_service)
+    ) -> str:
+    
+    logger.info("Received the request to summarize the conversation")
+
+    response = service.summarize_conversation(chatContext)
+
+    logger.info("Successfully received the summarized response from the AI API")
+
+    return response

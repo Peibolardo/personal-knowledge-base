@@ -1,6 +1,7 @@
 package backend.utils.externalServiceServices;
 
 import backend.dto.ChatResponseDTO;
+import backend.dto.ChatContextDTO;
 import backend.dto.MessageDTO;
 import backend.exception.customExceptions.ExternalServiceOperationException;
 import backend.exception.customExceptions.UnreachableExternalServiceException;
@@ -27,7 +28,7 @@ public class ExternalAiService {
     private final AiApiFeignClient aiApiFeignClient;
     private final WebClient aiWebClient;
 
-    public ExternalAiService(AiApiFeignClient aiApiFeignClient, WebClient webClient, WebClient aiWebClient) {
+    public ExternalAiService(AiApiFeignClient aiApiFeignClient, WebClient aiWebClient) {
         this.aiApiFeignClient = aiApiFeignClient;
         this.aiWebClient = aiWebClient;
     }
@@ -83,16 +84,16 @@ public class ExternalAiService {
      *         {@code UnreachableExternalServiceException} when communication with the AI service fails.</li>
      * </ul>
      *
-     * @param messageDTOList the conversation messages sent to the AI service
+     * @param chatContextDTO the context DTO with the conversation messages and summary to sent to the AI service
      * @return a Flux emitting SSE events as they arrive from the AI service
      */
-    public Flux<ServerSentEvent<String>> streamingMessageToAi(List<MessageDTO> messageDTOList){
+    public Flux<ServerSentEvent<String>> streamingMessageToAi(ChatContextDTO chatContextDTO){
 
             return aiWebClient.post()
                     .uri("/chat/stream")
                     .contentType(MediaType.APPLICATION_JSON)
                     .accept(MediaType.TEXT_EVENT_STREAM)
-                    .bodyValue(messageDTOList)
+                    .bodyValue(chatContextDTO)
                     .retrieve()
                     .onStatus(HttpStatusCode::isError, resp ->
                             resp.bodyToMono(String.class)
@@ -107,6 +108,30 @@ public class ExternalAiService {
                             WebClientRequestException.class,
                             e -> new UnreachableExternalServiceException("AI service unreachable")
                     );
+
+    }
+
+    /**
+     * Attempts to send the summary of a conversation and the newest messages to add into the summary
+     * @param chatContextDTO DTO containing both List of messages and the actual summary
+     * @return String with the new summary done by the AI
+     */
+    public String sendSummaryToTheLLM(ChatContextDTO chatContextDTO){
+
+        try{
+            logger.info("Sending the summary to the AI Service through the Feign client");
+            return aiApiFeignClient.sendSummaryToTheLLM(chatContextDTO);
+
+        }
+        catch(RetryableException e){
+            logger.warn("Failed to reach the API AI Service when trying to summarize: {}", e.toString());
+            throw new UnreachableExternalServiceException("External service is unreachable..");
+        }
+        catch (Exception e) {
+            logger.warn("Unexpected error response from the API AI Service trying to summarize with returning exception: {}", e.toString());
+            throw new ExternalServiceOperationException("Unexpected external service error");
+        }
+
 
     }
 

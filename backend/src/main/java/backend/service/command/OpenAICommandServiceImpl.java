@@ -2,6 +2,7 @@ package backend.service.command;
 
 import backend.dto.ChatRequestDTO;
 import backend.dto.ChatResponseDTO;
+import backend.dto.ChatContextDTO;
 import backend.dto.MessageDTO;
 import backend.exception.customExceptions.ConflictException;
 import backend.exception.customExceptions.ExternalServiceOperationException;
@@ -24,6 +25,10 @@ import backend.sse.utils.ChatStreamEventSerializer;
 import backend.utils.externalServiceServices.ExternalAiService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.task.TaskExecutor;
+import org.springframework.core.task.TaskRejectedException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.stereotype.Service;
@@ -50,7 +55,23 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
     private final ChatStreamEventSerializer chatStreamEventSerializer;
     private final ChatStreamEventDeserializer chatStreamEventDeserializer;
 
-    public OpenAICommandServiceImpl(MessageRepository messageRepository, ConversationRepository conversationRepository, ExternalAiService externalAiService, MessageChatRequestMapper chatRequestMapper, MessageChatResponseMapper chatResponseMapper, MessageMapper messageMapper, ChatStreamEventSerializer chatStreamEventSerializer, ChatStreamEventDeserializer chatStreamEventDeserializer) {
+    private final int maxTokens;
+    private final int summaryThreshold;
+    private static final int CONTEXT_BATCH_SIZE = 9;
+    private final TaskExecutor summaryTaskExecutor;
+
+    public OpenAICommandServiceImpl(MessageRepository messageRepository,
+                                    ConversationRepository conversationRepository,
+                                    ExternalAiService externalAiService,
+                                    MessageChatRequestMapper chatRequestMapper,
+                                    MessageChatResponseMapper chatResponseMapper,
+                                    MessageMapper messageMapper,
+                                    ChatStreamEventSerializer chatStreamEventSerializer,
+                                    ChatStreamEventDeserializer chatStreamEventDeserializer,
+                                    @Value("${context.max-tokens-request}") int maxTokens,
+                                    @Value("${summary.threshold}") int summaryThreshold,
+                                    @Qualifier("summaryTaskExecutor") TaskExecutor summaryTaskExecutor) {
+
         this.messageRepository = messageRepository;
         this.conversationRepository = conversationRepository;
         this.externalAiService = externalAiService;
@@ -59,6 +80,10 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
         this.messageMapper = messageMapper;
         this.chatStreamEventSerializer = chatStreamEventSerializer;
         this.chatStreamEventDeserializer = chatStreamEventDeserializer;
+        this.maxTokens = maxTokens;
+        this.summaryThreshold = summaryThreshold;
+        this.summaryTaskExecutor = summaryTaskExecutor;
+
     }
 
     /**
@@ -72,14 +97,14 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
      */
     public ChatResponseDTO sendMessageToApi(ChatRequestDTO chatRequestDTO){
 
-        // 1. Prepare the context
-        PreparedContext preparedContext = prepareContext(chatRequestDTO);
+        // 1. Prepare the context messages
+        PreparedMessages preparedMessages = prepareMessages(chatRequestDTO);
 
         // 2. Save the requestMessage Message object
-        Message messageRequest = preparedContext.requestMessage;
+        Message messageRequest = preparedMessages.requestMessage;
 
         // 2.Send the context to the API and try to receive the response
-        ChatResponseDTO responseDTO = externalAiService.sendMessageToAi(preparedContext.context);
+        ChatResponseDTO responseDTO = externalAiService.sendMessageToAi(preparedMessages.context);
 
         // 4.Check if the response exists
         if(responseDTO == null){
@@ -122,7 +147,7 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
      *    If so, emit a fallback SSE error event; otherwise, complete without emitting anything.
      *
      * Important:
-     * - prepareContext() executes before the deferred publisher is subscribed to.
+     * - prepareMessages() executes before the deferred publisher is subscribed to.
      * - started tracks event emission, not whether the HTTP response has been committed.
      * - concatMap() preserves sequential event processing, which is necessary to accumulate
      *   the assistant's response before persisting it when the done event arrives.
@@ -132,19 +157,22 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
      */
     public Flux<ServerSentEvent<String>> sendMessageToApiStreaming(ChatRequestDTO chatRequestDTO){
 
-        // 1. Prepare the context
-        PreparedContext preparedContext = prepareContext(chatRequestDTO);
+        // 1. Prepare the context messages
+        PreparedMessages preparedMessages = prepareMessages(chatRequestDTO);
+
+        // 2. Set the summary and context messages into the Context DTO to send
+        Conversation conversation = preparedMessages.requestMessage.getConversation();
+        ChatContextDTO chatContextDTO = new ChatContextDTO(conversation.getSummary(), preparedMessages.context);
 
         // 2. Save the requestMessage Message object
-        Message messageRequest = preparedContext.requestMessage;
-
+        Message messageRequest = preparedMessages.requestMessage;
 
         // 3. Send the context to the API and receive the Stream/Flux response
         return Flux.defer(() -> {
 
             StreamState state = new StreamState();   // one per subscription
 
-            return externalAiService.streamingMessageToAi(preparedContext.context)
+            return externalAiService.streamingMessageToAi(chatContextDTO)
                     .concatMap(sse -> handleEvent(sse, messageRequest, state))
                     .onErrorResume(e -> {
                         // nothing sent yet: let GlobalExceptionHandler answer with an HTTP status
@@ -169,11 +197,11 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
     }
 
     /**
-     * Function to prepare the context window to send to the AI
+     * Function to prepare the messages to send to the AI
      * @param chatRequestDTO DTO of the request send by the user
-     * @return PreparedContext record with the Message of requestMessage object and the List of Message with the context
+     * @return PreparedMessages record with the Message of requestMessage object and the List of Message for the context
      */
-    private PreparedContext prepareContext(ChatRequestDTO chatRequestDTO){
+    private PreparedMessages prepareMessages(ChatRequestDTO chatRequestDTO){
 
         // 1. Initialize a list to store the context window
         List<MessageDTO> messageDTOList = new ArrayList<MessageDTO>();
@@ -195,23 +223,57 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
         else{
             // 5.2.1 Checks if the conversationId is valid
             validateUuids(chatRequestDTO.getConversationId());
-            List<Message> contextMessages = messageRepository.getContextMessages(messageRequest.getConversation().getId(), PageRequest.of(0, 9));
+
+            // 5.2.2 Create variables to hold the token counting, the page to retrieve the pageable data and checker if the context threshold was reached
+            boolean budgetReached = false;
+            int tokenCount = 0;
+            int actualPage = 0;
+            List<Message> completeContext = new ArrayList<Message>();
+
+            // 5.2.3 Retrieve the context messages and add it until no messages can be retrieved or the sum is higher than the Max permitted
+            while(!budgetReached){
+
+                List<Message> contextMessages = messageRepository.getContextMessages(messageRequest.getConversation().getId(), PageRequest.of(actualPage, CONTEXT_BATCH_SIZE) );
+
+                if(contextMessages.isEmpty()){
+                    break;
+                }
+
+                for(Message message: contextMessages ) {
+
+                    if(tokenCount + message.getTokenCount() <= this.maxTokens){
+                        completeContext.add(message);
+                        tokenCount += message.getTokenCount();
+                    }
+                    else{
+                        budgetReached = true;
+                        break;
+                    }
+
+                }
+
+                if (!budgetReached) {
+                    actualPage++;
+                }
+
+            }
+
             // 5.2.2 order properly the messages reversing the order fetched
-            Collections.reverse(contextMessages);
-            List<MessageDTO> contextMessagesDTO = messageMapper.toDtoList(contextMessages);
+            Collections.reverse(completeContext);
+            List<MessageDTO> contextMessagesDTO = messageMapper.toDtoList(completeContext);
             messageDTOList.addAll(contextMessagesDTO);
             messageDTOList.add(messageDTO);
         }
 
-        return new PreparedContext(messageRequest, messageDTOList);
+        return new PreparedMessages(messageRequest, messageDTOList);
 
     }
 
     /**
-     * Groups the user message entity and the prepared context
-     * so both can be returned from prepareContext().
+     * Groups the user message entity and the prepared context messages
+     * so both can be returned from prepareMessages().
      */
-    private record PreparedContext(Message requestMessage, List<MessageDTO> context){}
+    private record PreparedMessages(Message requestMessage, List<MessageDTO> context){}
 
     /**
      * Method to check if the message belongs to the first of a conversation or not
@@ -319,7 +381,11 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
                 case ChatStreamDoneDTO doneDTO:
 
                     return Mono.fromCallable(() -> {
+                                // Blocked persistence by Schedulers.boundedElastic()
                                 persistMessages(messageRequest, doneDTO, state);
+                                // Helper method to set summarizeConversation() into a TaskExecutor thread manager
+                                triggerSummarization(messageRequest.getConversation().getId());
+                                // Return the SSE event
                                 return sse;                                   // forward the original done event
                             })
                             .subscribeOn(Schedulers.boundedElastic())          // blocking JPA lives here
@@ -400,6 +466,119 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
         responseMessage.setRole("assistant");
         messageRepository.save(responseMessage);
 
+    }
+
+    /**
+     * Generates or updates the conversation summary when the accumulated token count of unsummarized messages reaches the configured summary threshold.
+     *
+     * Retrieves messages in batches, starting with the most recent, until it reaches the last summarized message or there are no more messages.
+     * The selected messages are then reordered chronologically and sent to the AI service together with the existing summary, if any.
+     *
+     * After the AI service successfully generates the updated summary, the conversation's summary and last summarized message ID are updated and
+     * persisted. If the threshold is not reached, no changes are made.
+     *
+     * @param conversation the conversation whose summary should be generated or updated
+     */
+    private void summarizeConversation(Conversation conversation){
+
+        if(conversation != null) {
+
+            // Create variables to hold the token counting, the page to retrieve the pageable data and checker if the context threshold was reached
+            boolean reachedLimit = false;
+            int tokenCount = 0;
+            int actualPage = 0;
+
+            // New message list to add to the summary
+            List<Message> completeContext = new ArrayList<Message>();
+
+            //Contains the last message included in the summary
+            Message newestMessageIncluded  = null;
+
+            while(!reachedLimit) {
+
+                List<Message> newMessages = messageRepository.getContextMessages(conversation.getId(), PageRequest.of(actualPage, CONTEXT_BATCH_SIZE));
+
+                // Check if there is no more messages to iterate
+                if(newMessages.isEmpty()){
+                    reachedLimit = true;
+                    break;
+                }
+
+                for(Message message: newMessages){
+
+                    if( conversation.getLastSummarizedMessageId() != null && message.getId().equals(conversation.getLastSummarizedMessageId())){
+                        reachedLimit = true;
+                        break;
+                    }
+
+                    completeContext.add(message);
+                    tokenCount += message.getTokenCount();
+
+                    // Sets the message as the first included
+                    if (newestMessageIncluded == null) {
+                        newestMessageIncluded = message;
+                    }
+                }
+
+                if(!reachedLimit ){
+                    actualPage ++;
+                }
+
+            }
+            // If the tokens counted is above the threshold then call the AI Service to summarize the conversation with the new messages and old summary
+            if(tokenCount >= summaryThreshold && newestMessageIncluded != null){
+
+                // Order the messages from oldest to newest
+                Collections.reverse(completeContext);
+
+                List <MessageDTO> completeContextDTO = messageMapper.toDtoList(completeContext);
+                // Build the DTO to send with summary and the list of new messages
+                ChatContextDTO conversationSummary = new ChatContextDTO(conversation.getSummary(), completeContextDTO);
+
+                logger.info("Summarizing {} new messages. Oldest included ID: {}, previous checkpoint: {}", completeContext.size(), newestMessageIncluded.getId(), conversation.getLastSummarizedMessageId());
+
+                // Receive the new summary to save
+                String newSummary = externalAiService.sendSummaryToTheLLM(conversationSummary);
+
+                conversation.setSummary(newSummary);
+                conversation.setLastSummarizedMessageId(newestMessageIncluded.getId());
+
+                conversationRepository.save(conversation);
+
+            }
+
+        }
+
+    }
+
+    /**
+     * Helper to schedules conversation summarization as a background task.
+     * Reloads the conversation inside the task to avoid sharing a potentiallystale JPA entity between threads.
+     *
+     * Summarization failures are logged without interrupting the completed chat.
+     *
+     * @param conversationId ID of the conversation to summarize
+     */
+    private void triggerSummarization(String conversationId) {
+        try {
+            summaryTaskExecutor.execute(() -> {
+                try {
+                    Conversation conversation = conversationRepository.findById(conversationId).orElse(null);
+
+                    if (conversation == null) {
+                        logger.warn("Conversation {} not found for summarization", conversationId);
+                        return;
+                    }
+
+                    summarizeConversation(conversation);
+
+                } catch (Exception e) {
+                    logger.error("Conversation summarization failed for conversation {}", conversationId, e);
+                }
+            });
+        } catch (TaskRejectedException e) {
+            logger.error("Could not schedule summarization for conversation {}", conversationId, e);
+        }
     }
 
     /**
