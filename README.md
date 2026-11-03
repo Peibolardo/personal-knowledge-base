@@ -194,4 +194,6 @@ personal-knowledge-base/
 - ✅ v2.1 complete — conversation history persisted, last 9 messages + current sent to the model, token tracking, conversation sidebar
 - ✅ v2.2 complete — system prompts, structured output, error handling, retries, token tracking
 - ✅ v2.3 complete — OpenAI streaming, FastAPI StreamingResponse, SSE, Spring WebClient + Flux, Vue streaming, persistence on completion
-- 🔄 v2.4 in progress — Token budget, conversation summarization, context construction without embeddings 
+- ✅ v2.4 in complete — Token budget, conversation summarization, context construction without embeddings
+- 🔄 v3.0 in progress — Conversation embeddings, pgvector, semantic retrieval, dynamic context, initial message chunking strategy
+
