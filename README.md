@@ -86,16 +86,16 @@ The project is divided into three independent layers that communicate over HTTP:
 | **v2.1** | 2.1 | Context Window | Conversation history, context windows, tokens, persistence |
 | **v2.2** | 2.2 | LLM Engineering | System prompts, structured output, error handling, retries, token tracking, parameters |
 | **v2.3** | 2.3 | Streaming & Delivery | OpenAI streaming, FastAPI StreamingResponse, SSE, Spring WebClient + Flux, Vue streaming, persistence on completion |
-| **v2.4** | 2.4 | Context Engineering | Token budget, conversation summarization, dynamic context |
-| **v3.0** | 3 | Knowledge Base | Full notes CRUD, document import, frontend for notes |
-| **v4.0** | 4 | Embeddings + Vector DB | pgvector, OpenAI embeddings API, chunking, tiktoken |
+| **v2.4** | 2.4 | Context Engineering | Token budget, conversation summarization, context construction without embeddings |
+| **v3.0** | 3 | Embeddings & Dynamic Context | Conversation embeddings, pgvector, semantic retrieval, dynamic context, initial message chunking strategy |
+| **v4.0** | 4 | Personal Knowledge Base | Full notes CRUD, document import, frontend for notes |
 | **v5.0** | 5 | RAG | Built from scratch — query processing, vector search, relevant chunks injected as context |
-| **v5.5** | 5.5 | Evaluation | Recall, faithfulness, relevancy metrics across RAG versions |
-| **v6.0** | 6 | Auth + AI Security | JWT, prompt injection awareness, scoped data per user |
-| **v7.0** | 7 | Tools | Function calling, AI executes actions (search_knowledge, create_note, search_web...) |
-| **v8.0** | 8 | Agents | ReAct loop, tool chaining, autonomous AI decisions |
-| **v9.0** | 9 | Advanced Agents | LangGraph, MCP, multi-agent, human-in-the-loop, workflows |
-| **v10.0** | 10 | Production / LLMOps | Docker, deployment, observability, tracing, cost monitoring, CI/CD |
+| **v6.5** | 6.5 | Evaluation | Recall, faithfulness, relevancy metrics across RAG versions |
+| **v7.0** | 7 | Auth + AI Security | JWT, prompt injection awareness, scoped data per user |
+| **v8.0** | 8 | Tools | Function calling, AI executes actions (search_knowledge, create_note, search_web...) |
+| **v9.0** | 9 | Agents | ReAct loop, tool chaining, autonomous AI decisions |
+| **v10.0** | 10 | Advanced Agents | LangGraph, MCP, multi-agent, human-in-the-loop, workflows |
+| **v11.0** | 11 | Production / LLMOps | Docker, deployment, observability, tracing, cost monitoring, CI/CD |
 
 ---
 
@@ -194,4 +194,4 @@ personal-knowledge-base/
 - ✅ v2.1 complete — conversation history persisted, last 9 messages + current sent to the model, token tracking, conversation sidebar
 - ✅ v2.2 complete — system prompts, structured output, error handling, retries, token tracking
 - ✅ v2.3 complete — OpenAI streaming, FastAPI StreamingResponse, SSE, Spring WebClient + Flux, Vue streaming, persistence on completion
-- 🔄 v2.4 in progress — Token budget, conversation summarization, dynamic context 
+- 🔄 v2.4 in progress — Token budget, conversation summarization, context construction without embeddings 
