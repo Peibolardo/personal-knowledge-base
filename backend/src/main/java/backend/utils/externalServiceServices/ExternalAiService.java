@@ -1,10 +1,10 @@
 package backend.utils.externalServiceServices;
 
-import backend.dto.ChatResponseDTO;
-import backend.dto.ChatContextDTO;
-import backend.dto.MessageDTO;
+import backend.dto.*;
 import backend.exception.customExceptions.ExternalServiceOperationException;
 import backend.exception.customExceptions.UnreachableExternalServiceException;
+import backend.utils.externalServiceServices.feign_clients.AiApiFeignClient;
+import backend.utils.externalServiceServices.feign_clients.EmbeddingApiFeignClient;
 import feign.RetryableException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,15 +21,16 @@ import reactor.core.publisher.Flux;
 import java.util.List;
 
 @Service
-
 public class ExternalAiService {
 
     private static final Logger logger = LoggerFactory.getLogger(ExternalAiService.class);
     private final AiApiFeignClient aiApiFeignClient;
+    private final EmbeddingApiFeignClient embeddingApiFeignClient;
     private final WebClient aiWebClient;
 
-    public ExternalAiService(AiApiFeignClient aiApiFeignClient, WebClient aiWebClient) {
+    public ExternalAiService(AiApiFeignClient aiApiFeignClient, EmbeddingApiFeignClient embeddingApiFeignClient, WebClient aiWebClient) {
         this.aiApiFeignClient = aiApiFeignClient;
+        this.embeddingApiFeignClient = embeddingApiFeignClient;
         this.aiWebClient = aiWebClient;
     }
 
@@ -116,24 +117,39 @@ public class ExternalAiService {
      * @param chatContextDTO DTO containing both List of messages and the actual summary
      * @return String with the new summary done by the AI
      */
-    public String sendSummaryToTheLLM(ChatContextDTO chatContextDTO){
+    public String sendSummaryToTheLLM(ChatContextDTO chatContextDTO) {
 
-        try{
+        try {
             logger.info("Sending the summary to the AI Service through the Feign client");
             return aiApiFeignClient.sendSummaryToTheLLM(chatContextDTO);
 
-        }
-        catch(RetryableException e){
+        } catch (RetryableException e) {
             logger.warn("Failed to reach the API AI Service when trying to summarize: {}", e.toString());
             throw new UnreachableExternalServiceException("External service is unreachable..");
-        }
-        catch (Exception e) {
+        } catch (Exception e) {
             logger.warn("Unexpected error response from the API AI Service trying to summarize with returning exception: {}", e.toString());
             throw new ExternalServiceOperationException("Unexpected external service error");
         }
 
-
     }
+    /**
+     * Sends message content to the Python AI service to generate its embedding chunks.
+     * @param embeddingRequestDTO request containing the content to split and embed
+     * @return response containing the chunks and their embedding metadata
+     */
+    public EmbeddingResponseDTO embedMessageByChunks(EmbeddingRequestDTO embeddingRequestDTO) {
 
+        try {
+            logger.info("Sending message content to the AI Service to generate embeddings");
+            return embeddingApiFeignClient.embedMessageByChunks(embeddingRequestDTO);
+
+        } catch (RetryableException e) {
+            logger.warn("Failed to reach the AI Service while generating embeddings: {}", e.toString());
+            throw new UnreachableExternalServiceException("External service is unreachable..");
+        } catch (Exception e) {
+            logger.warn("Unexpected error response from the AI Service during embedding generation: {}", e.toString());
+            throw new ExternalServiceOperationException("Unexpected external service error");
+        }
+    }
 
 }
