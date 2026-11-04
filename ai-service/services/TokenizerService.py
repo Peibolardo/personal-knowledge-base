@@ -33,7 +33,7 @@ class TokenizerService:
     Function to decode the tokensIds to text
     '''
     def decodeText(self, tokens: list[int]):
-        return [self.encoding.decode([token]) for token in tokens]
+        return self.encoding.decode(tokens)
 
     '''
     Function to retrieve the tokens used in a call to AI API
@@ -45,3 +45,84 @@ class TokenizerService:
                             input=text
                         )
         return response.input_tokens
+
+    '''
+    Function to split text into token-based chunks while preserving an overlap between consecutive chunks and balancing the final two chunks when possible.
+
+    chunk_size: Maximum token count for a chunk, including its repeated overlap.
+    overlap: Number of tokens repeated from the previous chunk at the start of the next one.
+
+    With chunk_size=300 and overlap=30, each full step contributes 270 new tokens.
+    The final two chunks are resized to equal or nearly equal token counts while keeping
+    the configured overlap. If their combined size is odd, their sizes differ by one token.
+    '''
+    def tokenizeAndChunkingText(self, text: str, chunk_size: int, overlap: int):
+
+        textTokens = self.encodeText(text)
+
+        if not textTokens:
+            return []
+
+        if overlap < 0 or overlap >= chunk_size:
+            raise ValueError("Overlap must be between 0 and chunk_size")
+
+        chunks = []
+        start = 0
+
+        # Record token ranges so all chunks refer to the original token sequence.
+        # Each chunk contains at most chunk_size tokens, including its repeated overlap.
+        while start < len(textTokens):
+
+            end = min(start + chunk_size, len(textTokens))
+
+            chunks.append({
+                "start": start,
+                "end": end
+            })
+
+            if end == len(textTokens):
+                break
+
+            # Move forward by only the non-overlapping portion of this chunk.
+            start = end - overlap
+
+        # Balance the last two chunks
+        if len(chunks) >= 2:
+
+            firstStart = chunks[-2]["start"]
+            lastEnd = chunks[-1]["end"]
+
+            # Add the shared overlap to the union span to get the combined size of both chunks.
+            totalTokens = lastEnd - firstStart + overlap
+
+            # Integer division can leave the final two chunks one token apart.
+            firstChunkSize = totalTokens // 2
+
+            firstEnd = firstStart + firstChunkSize
+            # Keep exactly the configured overlap between the balanced pair.
+            secondStart = firstEnd - overlap
+
+            chunks[-2] = {
+                "start": firstStart,
+                "end": firstEnd
+            }
+
+            chunks[-1] = {
+                "start": secondStart,
+                "end": lastEnd
+            }
+
+        # Decode tokens and build the final chunks
+        result = []
+
+        for index, chunk in enumerate(chunks):
+
+            actualTokens = textTokens[chunk["start"]:chunk["end"]]
+
+            result.append({
+                "content": self.decodeText(actualTokens),
+                "chunk_index": index,
+                "token_count": len(actualTokens)
+            })
+
+        return result
