@@ -39,3 +39,4 @@ replay_pid*
 # Python cache
 __pycache__/
 *.py[cod]
+/ai-service/utils/embedding_endpoint_experiment.py
