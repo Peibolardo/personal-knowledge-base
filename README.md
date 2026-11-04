@@ -186,6 +186,12 @@ personal-knowledge-base/
 
 ---
 
+## 🧱 Phase 3.1 — Embeddings Foundation
+
+The backend currently uses Hibernate schema auto-update (`spring.jpa.hibernate.ddl-auto=update`) and has no Flyway/Liquibase migration framework. New entity columns and the message_chunks table are therefore applied by Hibernate at startup. Before startup, run `backend/src/main/resources/db/phase_3_1_pgvector.sql` once against PostgreSQL; the server must have the pgvector extension installed.
+
+Existing messages keep `turn_id = NULL` because their original user/assistant pairing cannot be reconstructed safely from role and timestamps alone. New turns receive one UUID shared by the user message and assistant response. `conversations.embedding_model` and chunk embeddings/model metadata remain nullable until embedding generation is implemented.
+
 ## 🔄 Current Status
 
 **v2.4 — Context Engineering** *(in progress)*

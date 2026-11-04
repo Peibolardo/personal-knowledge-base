@@ -39,6 +39,7 @@ import reactor.core.scheduler.Schedulers;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.UUID;
 
 import static backend.utils.IdValidator.validateUuids;
 
@@ -118,6 +119,7 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
         // 6. Save the response message
         Message messageResponse = chatResponseMapper.toMessage(responseDTO);
         messageResponse.setConversation(messageRequest.getConversation());
+        messageResponse.setTurnId(messageRequest.getTurnId());
         messageResponse.setRole("assistant");
         messageRepository.save(messageResponse);
 
@@ -209,6 +211,7 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
         // 2. Map the requestDTO message to a Message object and setConversation due to ignored in mapping
         Message messageRequest = chatRequestMapper.toEntity(chatRequestDTO);
         messageRequest.setConversation(getOrCreateConversation(chatRequestDTO.getConversationId(), chatRequestDTO.getInput()));
+        messageRequest.setTurnId(UUID.randomUUID());
         // 3. Set user as the role of the sender
         messageRequest.setRole("user");
 
@@ -462,6 +465,7 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
         Message responseMessage = new Message();
         responseMessage.setContent(streamState.responseMessage.toString());
         responseMessage.setConversation(requestMessage.getConversation());
+        responseMessage.setTurnId(requestMessage.getTurnId());
         responseMessage.setTokenCount(doneDTO.getTokensCompletion());
         responseMessage.setRole("assistant");
         messageRepository.save(responseMessage);

@@ -39,6 +39,13 @@ public class Message {
     private Integer tokenCount;
 
     /**
+     * Shared identifier for the user message and assistant response in one turn.
+     * Nullable to preserve legacy messages that predate turn grouping.
+     */
+    @Column(name = "turn_id")
+    private UUID turnId;
+
+    /**
      * //TODO
      * Nullable for now until phase5.1 when we add users and authentication
      */
