@@ -96,6 +96,9 @@ The project is divided into three independent layers that communicate over HTTP:
 | **v9.0** | 9 | Agents | ReAct loop, tool chaining, autonomous AI decisions |
 | **v10.0** | 10 | Advanced Agents | LangGraph, MCP, multi-agent, human-in-the-loop, workflows |
 | **v11.0** | 11 | Production / LLMOps | Docker, deployment, observability, tracing, cost monitoring, CI/CD |
+| **v12.0*** | 12 | Advanced Architecture & Distributed Processing | Apache Kafka (producers, consumers, topics, partitions, consumer groups), event-driven architecture, Transactional Outbox Pattern, asynchronous and distributed task processing, retries, idempotency, Dead Letter Queues (DLQs), reliable AI workload processing (embeddings generation and document ingestion), observability, fault tolerance |
+
+*Tentative future scope; the exact implementation will depend on the needs and architecture reached by that stage. Kafka is not part of Phase 3.0.*
 
 ---
 
@@ -196,4 +199,3 @@ personal-knowledge-base/
 - ✅ v2.3 complete — OpenAI streaming, FastAPI StreamingResponse, SSE, Spring WebClient + Flux, Vue streaming, persistence on completion
 - ✅ v2.4 in complete — Token budget, conversation summarization, context construction without embeddings
 - 🔄 v3.0 in progress — Conversation embeddings, pgvector, semantic retrieval, dynamic context, initial message chunking strategy
-
