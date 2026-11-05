@@ -15,6 +15,7 @@ import backend.model.Conversation;
 import backend.model.Message;
 import backend.repository.ConversationRepository;
 import backend.repository.MessageRepository;
+import backend.service.interfaces.EmbeddingCommandService;
 import backend.service.interfaces.OpenAICommandService;
 import backend.sse.DTOs.ChatStreamContentDTO;
 import backend.sse.DTOs.ChatStreamDoneDTO;
@@ -55,11 +56,13 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
     private final MessageMapper messageMapper;
     private final ChatStreamEventSerializer chatStreamEventSerializer;
     private final ChatStreamEventDeserializer chatStreamEventDeserializer;
+    private final EmbeddingCommandService embeddingCommandService;
 
     private final int maxTokens;
     private final int summaryThreshold;
     private static final int CONTEXT_BATCH_SIZE = 9;
     private final TaskExecutor summaryTaskExecutor;
+    private final TaskExecutor embeddingTaskExecutor;
 
     public OpenAICommandServiceImpl(MessageRepository messageRepository,
                                     ConversationRepository conversationRepository,
@@ -69,9 +72,11 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
                                     MessageMapper messageMapper,
                                     ChatStreamEventSerializer chatStreamEventSerializer,
                                     ChatStreamEventDeserializer chatStreamEventDeserializer,
+                                    EmbeddingCommandService embeddingCommandService,
                                     @Value("${context.max-tokens-request}") int maxTokens,
                                     @Value("${summary.threshold}") int summaryThreshold,
-                                    @Qualifier("summaryTaskExecutor") TaskExecutor summaryTaskExecutor) {
+                                    @Qualifier("summaryTaskExecutor") TaskExecutor summaryTaskExecutor,
+                                    @Qualifier("embeddingTaskExecutor")TaskExecutor embeddingTaskExecutor) {
 
         this.messageRepository = messageRepository;
         this.conversationRepository = conversationRepository;
@@ -81,10 +86,12 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
         this.messageMapper = messageMapper;
         this.chatStreamEventSerializer = chatStreamEventSerializer;
         this.chatStreamEventDeserializer = chatStreamEventDeserializer;
+        this.embeddingCommandService = embeddingCommandService;
         this.maxTokens = maxTokens;
         this.summaryThreshold = summaryThreshold;
         this.summaryTaskExecutor = summaryTaskExecutor;
 
+        this.embeddingTaskExecutor = embeddingTaskExecutor;
     }
 
     /**
@@ -212,6 +219,7 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
         Message messageRequest = chatRequestMapper.toEntity(chatRequestDTO);
         messageRequest.setConversation(getOrCreateConversation(chatRequestDTO.getConversationId(), chatRequestDTO.getInput()));
         messageRequest.setTurnId(UUID.randomUUID());
+
         // 3. Set user as the role of the sender
         messageRequest.setRole("user");
 
@@ -385,7 +393,7 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
 
                     return Mono.fromCallable(() -> {
                                 // Blocked persistence by Schedulers.boundedElastic()
-                                persistMessages(messageRequest, doneDTO, state);
+                                persistConversationTurn(messageRequest, doneDTO, state);
                                 // Helper method to set summarizeConversation() into a TaskExecutor thread manager
                                 triggerSummarization(messageRequest.getConversation().getId());
                                 // Return the SSE event
@@ -451,12 +459,28 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
     }
 
     /**
+     * Persists the user's message and the assistant's response before scheduling embedding generation for both.
+     * The persisted message IDs are passed to the embedding task, which runs asynchronously on the dedicated executor.
+     *
+     * @param requestMessage the user's message for this conversation turn
+     * @param doneDTO completion metadata containing the assistant response token count
+     * @param streamState accumulated assistant response content
+     */
+    private void persistConversationTurn(Message requestMessage, ChatStreamDoneDTO doneDTO, StreamState streamState) {
+
+        Message responseMessage = persistMessages(requestMessage, doneDTO, streamState);
+
+        triggerEmbedding(requestMessage.getId(), responseMessage.getId());
+
+    }
+
+    /**
      * Helper to save into the database the request and response Message object
      * @param requestMessage The Request Message object
      * @param doneDTO Stream Done event with the information tokens for the response
      * @param streamState The response content
      */
-    private void persistMessages(Message requestMessage, ChatStreamDoneDTO doneDTO, StreamState streamState){
+    private Message persistMessages(Message requestMessage, ChatStreamDoneDTO doneDTO, StreamState streamState){
 
         // 1. Save the request message after set the tokens in the database
         messageRepository.save(requestMessage);
@@ -465,10 +489,12 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
         Message responseMessage = new Message();
         responseMessage.setContent(streamState.responseMessage.toString());
         responseMessage.setConversation(requestMessage.getConversation());
-        responseMessage.setTurnId(requestMessage.getTurnId());
         responseMessage.setTokenCount(doneDTO.getTokensCompletion());
         responseMessage.setRole("assistant");
+        responseMessage.setTurnId(requestMessage.getTurnId());
         messageRepository.save(responseMessage);
+
+        return responseMessage;
 
     }
 
@@ -558,7 +584,6 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
     /**
      * Helper to schedules conversation summarization as a background task.
      * Reloads the conversation inside the task to avoid sharing a potentiallystale JPA entity between threads.
-     *
      * Summarization failures are logged without interrupting the completed chat.
      *
      * @param conversationId ID of the conversation to summarize
@@ -582,6 +607,28 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
             });
         } catch (TaskRejectedException e) {
             logger.error("Could not schedule summarization for conversation {}", conversationId, e);
+        }
+    }
+
+    /**
+     * Schedules embedding generation for the persisted user request and assistant response.
+     * Runs the embedding work on the dedicated executor so it does not block the chat response flow.
+     * Failures are logged without changing the already completed chat response.
+     *
+     * @param requestId ID of the persisted user message
+     * @param responseId ID of the persisted assistant response
+     */
+    private void triggerEmbedding(String requestId, String responseId) {
+        try {
+            embeddingTaskExecutor.execute(() -> {
+                try {
+                    embeddingCommandService.embedRequestResponseMessages(requestId, responseId);
+                } catch (Exception e) {
+                    logger.error("Embedding generation failed for request {} and response {}", requestId, responseId, e);
+                }
+            });
+        } catch (TaskRejectedException e) {
+            logger.error("Could not schedule embedding generation for request {} and response {}", requestId, responseId, e);
         }
     }
 

@@ -10,7 +10,7 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
  * This prevents the LLM summarization call from delaying the DONE event sent to the frontend after the messages have been persisted.
  */
 @Configuration
-public class AsyncConfig {
+public class SummaryAsyncConfig {
 
     /**
      * Creates and configures a Spring-managed TaskExecutor dedicate to conversation summarization.
