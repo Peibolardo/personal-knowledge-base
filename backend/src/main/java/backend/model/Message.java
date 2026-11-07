@@ -14,7 +14,7 @@ import java.util.UUID;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@SQLDelete(sql = "UPDATE messages set active = false, modification_date = NOW() WHERE id = ?")
+@SQLDelete(sql = "UPDATE messages set active = false WHERE id = ?")
 @SQLRestriction("active = true")
 public class Message {
 
@@ -37,6 +37,13 @@ public class Message {
 
     @Column(name = "token_count")
     private Integer tokenCount;
+
+    /**
+     * Shared identifier for the user message and assistant response in one turn.
+     * Nullable to preserve legacy messages that predate turn grouping.
+     */
+    @Column(name = "turn_id")
+    private UUID turnId;
 
     /**
      * //TODO
