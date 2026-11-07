@@ -14,7 +14,7 @@ import java.util.UUID;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@SQLDelete(sql = "UPDATE messages set active = false, modification_date = NOW() WHERE id = ?")
+@SQLDelete(sql = "UPDATE messages set active = false WHERE id = ?")
 @SQLRestriction("active = true")
 public class Message {
 

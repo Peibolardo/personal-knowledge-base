@@ -22,7 +22,7 @@ import java.util.UUID;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@SQLDelete(sql = "UPDATE message_chunks set active = false, modification_date = NOW() WHERE id = ?")
+@SQLDelete(sql = "UPDATE message_chunks set active = false WHERE id = ?")
 @SQLRestriction("active = true")
 public class MessageChunk {
 
