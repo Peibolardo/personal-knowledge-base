@@ -22,6 +22,12 @@ public interface MessageRepository extends JpaRepository<Message, String> {
     List<Message> getContextMessages(@Param("conversationId") String conversationId, Pageable pageable);
 
     /**
+     * Gets every message belonging to a turn in the specified conversation, newest first.
+     */
+    @Query("SELECT m FROM Message m WHERE m.conversation.id = :conversationId AND m.turnId = :turnId ORDER BY m.creationDate DESC")
+    List<Message> getTurnMessages(@Param("conversationId") String conversationId, @Param("turnId") java.util.UUID turnId);
+
+    /**
      * Gets all the messages from a specific conversation
      * @param conversationId The identifier of the conversation.
      * @return List<Message>

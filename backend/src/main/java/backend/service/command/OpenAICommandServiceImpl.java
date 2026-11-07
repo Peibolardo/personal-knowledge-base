@@ -39,7 +39,9 @@ import reactor.core.scheduler.Schedulers;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import static backend.utils.IdValidator.validateUuids;
@@ -239,34 +241,65 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
             boolean budgetReached = false;
             int tokenCount = 0;
             int actualPage = 0;
-            List<Message> completeContext = new ArrayList<Message>();
+            List<Message> completeContext = new ArrayList<>();
+            Set<UUID> processedTurnIds = new HashSet<>();
 
-            // 5.2.3 Retrieve the context messages and add it until no messages can be retrieved or the sum is higher than the Max permitted
-            while(!budgetReached){
+            // 5.2.3 Retrieve recent messages newest-first, while counting each identified turn as one budget unit.
+            while (!budgetReached) {
 
-                List<Message> contextMessages = messageRepository.getContextMessages(messageRequest.getConversation().getId(), PageRequest.of(actualPage, CONTEXT_BATCH_SIZE) );
+                List<Message> contextMessages = messageRepository.getContextMessages(messageRequest.getConversation().getId(), PageRequest.of(actualPage, CONTEXT_BATCH_SIZE));
 
-                if(contextMessages.isEmpty()){
+                if (contextMessages.isEmpty()) {
                     break;
                 }
 
-                for(Message message: contextMessages ) {
+                for (Message message : contextMessages) {
+                    UUID turnId = message.getTurnId();
 
-                    if(tokenCount + message.getTokenCount() <= this.maxTokens){
-                        completeContext.add(message);
-                        tokenCount += message.getTokenCount();
+                    // 5.2.3.1 Legacy messages have no turn ID, so check their token count individually.
+                    if (turnId == null) {
+                        int messageTokens = message.getTokenCount() == null ? 0 : message.getTokenCount();
+                        if (tokenCount + messageTokens <= this.maxTokens) {
+                            completeContext.add(message);
+                            tokenCount += messageTokens;
+                        } else {
+                            budgetReached = true;
+                            break;
+                        }
+                        continue;
                     }
-                    else{
+
+                    // 5.2.3.2 Skip turns already checked, including when their messages appear on separate pages.
+                    if (!processedTurnIds.add(turnId)) {
+                        continue;
+                    }
+
+                    // 5.2.3.3 Load all messages for this turn, even if the current page contains only one of them.
+                    List<Message> turnMessages = messageRepository.getTurnMessages(messageRequest.getConversation().getId(), turnId);
+
+                    if (turnMessages.isEmpty()) {
+                        continue;
+                    }
+
+                    // 5.2.3.4 Calculate the combined token cost before adding any message from the turn.
+                    int turnTokens = turnMessages.stream()
+                            .mapToInt(turnMessage -> turnMessage.getTokenCount() == null ? 0 : turnMessage.getTokenCount())
+                            .sum();
+
+                    // 5.2.3.5 Add the complete turn only when it fits within the recent-context token limit.
+                    if (tokenCount + turnTokens <= this.maxTokens) {
+                        completeContext.addAll(turnMessages);
+                        tokenCount += turnTokens;
+                    } else {
                         budgetReached = true;
                         break;
                     }
-
                 }
 
+                // 5.2.3.6 Continue to the next page only if the token limit has not been reached.
                 if (!budgetReached) {
                     actualPage++;
                 }
-
             }
 
             // 5.2.2 order properly the messages reversing the order fetched
