@@ -665,6 +665,12 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
         }
     }
 
+    private PreparedMessages prepareSemanticContext(PreparedMessages preparedMessages){
+
+        // 1.
+
+    }
+
     /**
      * Small helper to check if the event flux is and error or done one
      * @param e Event received

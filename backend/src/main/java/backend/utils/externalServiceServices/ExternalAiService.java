@@ -152,4 +152,26 @@ public class ExternalAiService {
         }
     }
 
+    /**
+     * Sends the complete user query to the Python AI service to generate one embedding for semantic search.
+     * The query is embedded as a whole and is not split into chunks.
+     *
+     * @param query the full user query text to embed
+     * @return the query vector and the embedding model used by the AI service
+     */
+    public QueryEmbeddingResponseDTO embedQuery(String query) {
+
+        try {
+            logger.info("Sending the complete query to the AI Service to generate its embedding");
+            return embeddingApiFeignClient.embedQuery(query);
+
+        } catch (RetryableException e) {
+            logger.warn("Failed to reach the AI Service while generating a query embedding: {}", e.toString());
+            throw new UnreachableExternalServiceException("External service is unreachable..");
+        } catch (Exception e) {
+            logger.warn("Unexpected error response from the AI Service during query embedding generation: {}", e.toString());
+            throw new ExternalServiceOperationException("Unexpected external service error");
+        }
+    }
+
 }

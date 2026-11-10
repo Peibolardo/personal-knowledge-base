@@ -6,6 +6,7 @@ from openai import (
 from services.TokenizerService import TokenizerService
 from DTOs.EmbeddingRequest import EmbeddingRequest
 from DTOs.EmbeddingResponse import EmbeddingResponse
+from DTOs.QueryEmbeddingResponse import QueryEmbeddingResponse
 
 
 class EmbeddingService:
@@ -75,3 +76,34 @@ class EmbeddingService:
         self.logger.info("Successfully generated embeddings for the provided text")
 
         return EmbeddingResponse(chunks=result_chunks)
+
+
+    '''
+    Function to generate one embedding for the complete user query without splitting it into chunks.
+
+    query: The complete user message to embed for semantic comparison against stored message chunks.
+    The text is sent directly to the embeddings API, and the response includes the vector and model name.
+    '''
+    async def embed_query(self, query: str) -> QueryEmbeddingResponse:
+
+        if not query or not query.strip():
+            raise ValueError("Query content cannot be blank")
+
+        self.logger.info("Generating an embedding for the complete user query")
+
+        response = await self.client.embeddings.create(
+            model=self.model,
+            input=query
+        )
+
+        if len(response.data) != 1 or response.data[0].index != 0:
+            self.logger.error("Embedding API returned an unexpected result for the query")
+            raise ValueError("Embedding API did not return exactly one query embedding")
+
+        query_embedding = QueryEmbeddingResponse(
+            embedding=response.data[0].embedding,
+            embedding_model=self.model
+        )
+
+        self.logger.info("Successfully generated the query embedding")
+        return query_embedding

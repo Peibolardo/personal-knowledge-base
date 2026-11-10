@@ -3,6 +3,7 @@ package backend.service.command;
 import backend.dto.EmbeddingChunkDTO;
 import backend.dto.EmbeddingRequestDTO;
 import backend.dto.EmbeddingResponseDTO;
+import backend.dto.QueryEmbeddingResponseDTO;
 import backend.exception.customExceptions.ExternalServiceOperationException;
 import backend.exception.customExceptions.InvalidRequestException;
 import backend.exception.customExceptions.ResourceNotFoundException;
@@ -28,6 +29,7 @@ public class EmbeddingCommandServiceImpl implements EmbeddingCommandService {
 
     private static final Logger logger = LoggerFactory.getLogger(EmbeddingCommandServiceImpl.class);
     private static final int EMBEDDING_DIMENSIONS = 1536;
+    private static final double SIMILARITY_THRESHOLD = 0.70;
 
     private final MessageChunkRepository messageChunkRepository;
     private final MessageRepository messageRepository;
@@ -160,5 +162,27 @@ public class EmbeddingCommandServiceImpl implements EmbeddingCommandService {
 
         // 6. Return validated entities; the caller saves them after both messages are processed.
         return messageChunks;
+    }
+
+    public List<String> semanticSearch(Message message){
+
+        // 1. Check if the message is empty
+        if(message == null){
+            throw new InvalidRequestException("There is no message to search");
+        }
+
+        int actualPage = 0;
+
+        try {
+            // 2 Request the embeddings to the AI Service
+            QueryEmbeddingResponseDTO messageEmbedding = externalAiService.embedQuery(message.getContent());
+
+
+
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+
+
     }
 }
