@@ -740,7 +740,8 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
                     .toList();
 
             if (newTurnIds.isEmpty()) {
-                continue;
+                //TODO consider change to break;
+                break;
             }
 
             List<Message> batchMessages = messageRepository.getTurnMessagesForTurns(conversationId, newTurnIds);
