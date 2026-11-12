@@ -39,8 +39,12 @@ import reactor.core.scheduler.Schedulers;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import static backend.utils.IdValidator.validateUuids;
 
@@ -61,6 +65,8 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
     private final int maxTokens;
     private final int summaryThreshold;
     private static final int CONTEXT_BATCH_SIZE = 9;
+    private static final int SEMANTIC_CONTEXT_BATCH_SIZE = 10;
+    private final int SEMANTIC_CONTEXT_TOKEN_LIMIT;
     private final TaskExecutor summaryTaskExecutor;
     private final TaskExecutor embeddingTaskExecutor;
 
@@ -75,6 +81,7 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
                                     EmbeddingCommandService embeddingCommandService,
                                     @Value("${context.max-tokens-request}") int maxTokens,
                                     @Value("${summary.threshold}") int summaryThreshold,
+                                    @Value("${semantic.context.max-tokens}") int semanticContextTokenLimit,
                                     @Qualifier("summaryTaskExecutor") TaskExecutor summaryTaskExecutor,
                                     @Qualifier("embeddingTaskExecutor")TaskExecutor embeddingTaskExecutor) {
 
@@ -89,6 +96,7 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
         this.embeddingCommandService = embeddingCommandService;
         this.maxTokens = maxTokens;
         this.summaryThreshold = summaryThreshold;
+        this.SEMANTIC_CONTEXT_TOKEN_LIMIT = semanticContextTokenLimit;
         this.summaryTaskExecutor = summaryTaskExecutor;
 
         this.embeddingTaskExecutor = embeddingTaskExecutor;
@@ -166,17 +174,28 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
      */
     public Flux<ServerSentEvent<String>> sendMessageToApiStreaming(ChatRequestDTO chatRequestDTO){
 
-        // 1. Prepare the context messages
+        // 1. Prepare the recent context and current request using the existing message preparation flow.
         PreparedMessages preparedMessages = prepareMessages(chatRequestDTO);
 
-        // 2. Set the summary and context messages into the Context DTO to send
-        Conversation conversation = preparedMessages.requestMessage.getConversation();
-        ChatContextDTO chatContextDTO = new ChatContextDTO(conversation.getSummary(), preparedMessages.context);
+        // 2. Retrieve semantic history separately so prepareMessages keeps its existing behavior and ordering.
+        PreparedMessages semanticMessages = prepareSemanticContext(preparedMessages);
 
-        // 2. Save the requestMessage Message object
+        // 3. Append the already prepared recent context after semantic messages, omitting exact DTO duplicates.
+        List<MessageDTO> combinedContext = new ArrayList<>(semanticMessages.context());
+        for (MessageDTO message : preparedMessages.context()) {
+            if (!combinedContext.contains(message)) {
+                combinedContext.add(message);
+            }
+        }
+
+        // 4. Set the summary and merged context into the Context DTO to send.
+        Conversation conversation = preparedMessages.requestMessage.getConversation();
+        ChatContextDTO chatContextDTO = new ChatContextDTO(conversation.getSummary(), combinedContext);
+
+        // 5. Keep the original request message for persistence after the stream completes.
         Message messageRequest = preparedMessages.requestMessage;
 
-        // 3. Send the context to the API and receive the Stream/Flux response
+        // 6. Send the merged context to the API and receive the Stream/Flux response.
         return Flux.defer(() -> {
 
             StreamState state = new StreamState();   // one per subscription
@@ -239,34 +258,65 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
             boolean budgetReached = false;
             int tokenCount = 0;
             int actualPage = 0;
-            List<Message> completeContext = new ArrayList<Message>();
+            List<Message> completeContext = new ArrayList<>();
+            Set<UUID> processedTurnIds = new HashSet<>();
 
-            // 5.2.3 Retrieve the context messages and add it until no messages can be retrieved or the sum is higher than the Max permitted
-            while(!budgetReached){
+            // 5.2.3 Retrieve recent messages newest-first, while counting each identified turn as one budget unit.
+            while (!budgetReached) {
 
-                List<Message> contextMessages = messageRepository.getContextMessages(messageRequest.getConversation().getId(), PageRequest.of(actualPage, CONTEXT_BATCH_SIZE) );
+                List<Message> contextMessages = messageRepository.getContextMessages(messageRequest.getConversation().getId(), PageRequest.of(actualPage, CONTEXT_BATCH_SIZE));
 
-                if(contextMessages.isEmpty()){
+                if (contextMessages.isEmpty()) {
                     break;
                 }
 
-                for(Message message: contextMessages ) {
+                for (Message message : contextMessages) {
+                    UUID turnId = message.getTurnId();
 
-                    if(tokenCount + message.getTokenCount() <= this.maxTokens){
-                        completeContext.add(message);
-                        tokenCount += message.getTokenCount();
+                    // 5.2.3.1 Legacy messages have no turn ID, so check their token count individually.
+                    if (turnId == null) {
+                        int messageTokens = message.getTokenCount() == null ? 0 : message.getTokenCount();
+                        if (tokenCount + messageTokens <= this.maxTokens) {
+                            completeContext.add(message);
+                            tokenCount += messageTokens;
+                        } else {
+                            budgetReached = true;
+                            break;
+                        }
+                        continue;
                     }
-                    else{
+
+                    // 5.2.3.2 Skip turns already checked, including when their messages appear on separate pages.
+                    if (!processedTurnIds.add(turnId)) {
+                        continue;
+                    }
+
+                    // 5.2.3.3 Load all messages for this turn, even if the current page contains only one of them.
+                    List<Message> turnMessages = messageRepository.getTurnMessages(messageRequest.getConversation().getId(), turnId);
+
+                    if (turnMessages.isEmpty()) {
+                        continue;
+                    }
+
+                    // 5.2.3.4 Calculate the combined token cost before adding any message from the turn.
+                    int turnTokens = turnMessages.stream()
+                            .mapToInt(turnMessage -> turnMessage.getTokenCount() == null ? 0 : turnMessage.getTokenCount())
+                            .sum();
+
+                    // 5.2.3.5 Add the complete turn only when it fits within the recent-context token limit.
+                    if (tokenCount + turnTokens <= this.maxTokens) {
+                        completeContext.addAll(turnMessages);
+                        tokenCount += turnTokens;
+                    } else {
                         budgetReached = true;
                         break;
                     }
-
                 }
 
+                // 5.2.3.6 Continue to the next page only if the token limit has not been reached.
                 if (!budgetReached) {
                     actualPage++;
                 }
-
             }
 
             // 5.2.2 order properly the messages reversing the order fetched
@@ -630,6 +680,144 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
         } catch (TaskRejectedException e) {
             logger.error("Could not schedule embedding generation for request {} and response {}", requestId, responseId, e);
         }
+    }
+
+    /**
+     * Builds a chronological context from the most relevant complete turns without exceeding the token budget.
+     * Embeds the current request once, pages through unique turn candidates, and adds each fitting turn only once.
+     *
+     * @param preparedMessages request message and context already selected by {@code prepareMessages}
+     * @return the request message and semantic history, excluding messages already in the prepared context
+     * @throws InvalidRequestException if the request does not belong to a valid conversation
+     * @throws ExternalServiceOperationException if embedding or retrieval returns invalid data
+     */
+    private PreparedMessages prepareSemanticContext(PreparedMessages preparedMessages){
+
+        // 1. Validate the request and its conversation before embedding or retrieving context.
+        Message requestMessage = preparedMessages.requestMessage();
+
+        if (requestMessage == null || requestMessage.getConversation() == null || requestMessage.getConversation().getId() == null) {
+            throw new InvalidRequestException("A persisted conversation is required to prepare semantic context");
+        }
+
+        String conversationId = requestMessage.getConversation().getId();
+        String embeddingModel = requestMessage.getConversation().getEmbeddingModel();
+
+        if (embeddingModel == null || embeddingModel.isBlank()) {
+            // 1.1 A new or legacy conversation without indexed chunks contributes no semantic history.
+            logger.info("Skipping semantic retrieval for conversation {} because it has no embedding model", conversationId);
+            return new PreparedMessages(requestMessage, new ArrayList<>());
+
+        }
+
+        // 2. Generate the query vector once; subsequent pages reuse the same PostgreSQL vector literal.
+        String queryVector = embeddingCommandService.embedMessageWithoutChunking(requestMessage);
+
+        // 3. Track page offset, consumed tokens, selected messages, and turns already visited.
+        int offset = 0;
+        int tokenCount = 0;
+        int semanticTokenLimit = SEMANTIC_CONTEXT_TOKEN_LIMIT;
+        boolean tokenBudgetReached = false;
+        List<Message> selectedMessages = new ArrayList<>();
+        Set<UUID> processedTurnIds = new HashSet<>();
+
+        // 4. Continue fetching ranked turn IDs until the token budget is reached or no candidates remain.
+        while (!tokenBudgetReached) {
+
+            List<UUID> turnIds = embeddingCommandService.semanticSearchPagination(
+                    queryVector, conversationId, embeddingModel, offset, SEMANTIC_CONTEXT_BATCH_SIZE
+            );
+
+            if (turnIds == null || turnIds.isEmpty()) {
+                break;
+            }
+
+            offset += turnIds.size();
+
+            // 5. Remove turn IDs already visited, then load every message from the remaining batch in one query.
+            List<UUID> newTurnIds = turnIds.stream()
+                    .filter(turnId -> turnId != null && processedTurnIds.add(turnId))
+                    .toList();
+
+            if (newTurnIds.isEmpty()) {
+                //TODO consider change to break;
+                break;
+            }
+
+            List<Message> batchMessages = messageRepository.getTurnMessagesForTurns(conversationId, newTurnIds);
+
+            Map<UUID, List<Message>> messagesByTurnId = batchMessages.stream()
+                    .collect(Collectors.groupingBy(Message::getTurnId));
+
+            // 6. Validate each complete turn and count its stored tokens before including it.
+            for (UUID turnId : newTurnIds) {
+
+                List<Message> turnMessages = messagesByTurnId.get(turnId);
+
+                if (!containsCompleteUserAssistantTurn(turnMessages)) {
+                    logger.warn("Skipping incomplete turn {} returned by semantic search", turnId);
+                    continue;
+                }
+
+                boolean hasValidTokenCounts = turnMessages.stream()
+                        .allMatch(turnMessage -> turnMessage.getTokenCount() != null && turnMessage.getTokenCount() >= 0);
+
+                if (!hasValidTokenCounts) {
+                    logger.warn("Skipping turn {} because one or more messages have no valid token count", turnId);
+                    continue;
+                }
+
+                int turnTokens = turnMessages.stream().mapToInt(Message::getTokenCount).sum();
+
+                // 7. Do not add a turn if its messages already appear in the recent context from prepareMessages.
+                List<MessageDTO> turnDTOs = messageMapper.toDtoList(turnMessages);
+                if (turnDTOs.stream().anyMatch(preparedMessages.context()::contains)) {
+                    continue;
+                }
+
+                // 8. Add a turn atomically only when both messages fit within the remaining semantic context budget.
+                if (tokenCount + turnTokens <= semanticTokenLimit) {
+
+                    selectedMessages.addAll(turnMessages);
+                    tokenCount += turnTokens;
+
+                    if (tokenCount >= semanticTokenLimit) {
+
+                        tokenBudgetReached = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // 9. Sort semantic history chronologically and return it without re-adding the request message.
+        selectedMessages.sort((first, second) -> first.getCreationDate().compareTo(second.getCreationDate()));
+        List<MessageDTO> context = messageMapper.toDtoList(selectedMessages);
+        return new PreparedMessages(requestMessage, context);
+
+    }
+
+    /**
+     * Confirms that a retrieved turn contains both the user request and assistant response.
+     *
+     * @param turnMessages messages returned for one turn ID
+     * @return true only when the turn contains at least one user message and one assistant message
+     */
+    private boolean containsCompleteUserAssistantTurn(List<Message> turnMessages) {
+
+        if (turnMessages == null || turnMessages.size() != 2) {
+            return false;
+        }
+
+        long userMessages = turnMessages.stream()
+                .filter(message -> "user".equalsIgnoreCase(message.getRole()))
+                .count();
+
+        long assistantMessages = turnMessages.stream()
+                .filter(message -> "assistant".equalsIgnoreCase(message.getRole()))
+                .count();
+
+        return userMessages == 1 && assistantMessages == 1;
     }
 
     /**

@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Body, Depends
 from services.EmbeddingService import EmbeddingService
 from functools import lru_cache
 from DTOs.EmbeddingRequest import EmbeddingRequest
 from DTOs.EmbeddingResponse import EmbeddingResponse
+from DTOs.QueryEmbeddingResponse import QueryEmbeddingResponse
 
 import logging
 
@@ -30,9 +31,9 @@ service: Injected service dependencies to make use of them
 '''
 @router.post("/generate")
 async def generate_embeddings(
-    req: EmbeddingRequest,
-    service: "EmbeddingService" = Depends(get_embedding_service)
-) -> EmbeddingResponse:
+        req: EmbeddingRequest, 
+        service: "EmbeddingService" = Depends(get_embedding_service)
+    ) -> EmbeddingResponse:
     logger.info("Received the request to generate embeddings for the provided text")
     
     embeddings = await service.generate_embeddings(req)
@@ -40,3 +41,24 @@ async def generate_embeddings(
     logger.info("Successfully generated embeddings for the provided text")
 
     return embeddings
+
+
+'''
+POST /embeddings/query
+Purpose: Generate one embedding for the complete user query without chunking.
+query: (Required) A raw JSON string containing the user message.
+service: Injected embedding service used to create the query vector.
+'''
+@router.post("/query", response_model=QueryEmbeddingResponse)
+async def embed_query(
+        query: str = Body(..., min_length=1, description="The complete user message to embed"),
+        service: "EmbeddingService" = Depends(get_embedding_service)
+    ) -> QueryEmbeddingResponse:
+   
+    logger.info("Received a query embedding request")
+
+    query_embedding = await service.embed_query(query)
+
+    logger.info("Successfully generated the query embedding")
+
+    return query_embedding
