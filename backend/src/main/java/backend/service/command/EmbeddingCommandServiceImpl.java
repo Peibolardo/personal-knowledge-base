@@ -106,12 +106,15 @@ public class EmbeddingCommandServiceImpl implements EmbeddingCommandService {
         chunksToPersist.addAll(embedMessage(responseMessage));
 
         // 7. Keep the conversation's model aligned with the model used by every persisted chunk.
-        String embeddingModel = chunksToPersist.get(0).getEmbeddingModel();
+        String embeddingModel = chunksToPersist.getFirst().getEmbeddingModel();
+
         if (chunksToPersist.stream().anyMatch(chunk -> !embeddingModel.equals(chunk.getEmbeddingModel()))) {
             throw new ExternalServiceOperationException("The AI service returned different embedding models for one turn");
         }
+
         var conversation = conversationRepository.findById(requestMessage.getConversation().getId())
                 .orElseThrow(() -> new ResourceNotFoundException("The conversation for the messages was not found"));
+
         conversation.setEmbeddingModel(embeddingModel);
         conversationRepository.save(conversation);
 

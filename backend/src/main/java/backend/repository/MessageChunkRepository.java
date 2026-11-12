@@ -23,6 +23,7 @@ public interface MessageChunkRepository extends JpaRepository<MessageChunk, Stri
      * @param rowOffset number of unique turn candidates to skip
      * @return ranked turn IDs for the requested page
      */
+
     @Query(value = """
         SELECT m.turn_id
         FROM message_chunks mc

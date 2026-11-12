@@ -776,9 +776,12 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
 
                 // 8. Add a turn atomically only when both messages fit within the remaining semantic context budget.
                 if (tokenCount + turnTokens <= semanticTokenLimit) {
+
                     selectedMessages.addAll(turnMessages);
                     tokenCount += turnTokens;
+
                     if (tokenCount >= semanticTokenLimit) {
+
                         tokenBudgetReached = true;
                         break;
                     }
