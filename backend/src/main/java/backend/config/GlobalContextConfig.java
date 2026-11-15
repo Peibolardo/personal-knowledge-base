@@ -1,0 +1,62 @@
+package backend.config;
+
+import lombok.Getter;
+import lombok.Setter;
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.context.annotation.Configuration;
+
+/**
+ * Class to set up the Global Context Budget Management
+ * with the objective to establish a global token budget accounting for all prompt components, the model's context window and reserved output tokens.
+ */
+@Configuration
+@ConfigurationProperties(prefix = "ai.context")
+@Getter
+@Setter
+public class GlobalContextConfig {
+
+    /**
+     * Maximum tokens allocated to recent messages, including the request message
+     */
+    private int recentTokenBudget;
+
+    /**
+     * 	Maximum tokens allocated to retrieved history
+     */
+    private int semanticTokenBudget;
+
+    /**
+     * 	Maximum completion tokens reserved for the response
+     */
+    private int maxCompletionTokens;
+
+    /**
+     * 		Maximum tokens generated when creating/updating the summary
+     */
+    private int summaryTokenBudget;
+
+    /**
+     * Unsummarized tokens needed to trigger a summary update
+     */
+    private int summarizationTrigger;
+
+    /**
+     * Extra reserve to avoid exceeding the model's context window
+     */
+    private int inputSafetyMargin;
+
+    /**
+     * Model's maximum tokens available
+     */
+    private int contextWindowTokens;
+
+    /**
+     * Helper function to retrieve the available context window tokens
+     */
+    public int getAvailableInputTokens() {
+
+        return contextWindowTokens - maxCompletionTokens - inputSafetyMargin;
+
+    }
+
+}
