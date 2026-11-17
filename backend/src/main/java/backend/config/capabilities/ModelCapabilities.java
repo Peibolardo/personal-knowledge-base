@@ -1,5 +1,6 @@
 package backend.config.capabilities;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -18,11 +19,13 @@ public class ModelCapabilities {
     /**
      * Context window limit
      */
+    @JsonProperty("context_window_tokens")
     private int contextWindowTokens;
 
     /**
      * Max completion tokens limit
      */
+    @JsonProperty("model_max_completions_tokens")
     private int modelMaxCompletionTokens;
 
     /**

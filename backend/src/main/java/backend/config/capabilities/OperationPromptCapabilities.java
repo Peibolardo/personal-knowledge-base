@@ -1,5 +1,6 @@
 package backend.config.capabilities;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -10,8 +11,10 @@ import lombok.Setter;
 @Setter
 public class OperationPromptCapabilities {
 
+    @JsonProperty("system_prompt_tokens")
     private int systemPromptTokens;
 
+    @JsonProperty("developer_prompt_tokens")
     private int developerPromptTokens;
 
 }
