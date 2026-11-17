@@ -1,7 +1,9 @@
 package backend.config;
 
+import backend.config.capabilities.ModelCapabilities;
 import lombok.Getter;
 import lombok.Setter;
+//Binds application.properties to our Config attributes looking for the prefix
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
 
@@ -31,7 +33,7 @@ public class GlobalContextConfig {
     private int maxCompletionTokens;
 
     /**
-     * 		Maximum tokens generated when creating/updating the summary
+     * 	Maximum tokens generated when creating/updating the summary
      */
     private int summaryTokenBudget;
 
@@ -46,17 +48,12 @@ public class GlobalContextConfig {
     private int inputSafetyMargin;
 
     /**
-     * Model's maximum tokens available
-     */
-    private int contextWindowTokens;
-
-    /**
      * Helper function to retrieve the available context window tokens
      */
-    public int getAvailableInputTokens() {
+    public int getAvailableInputTokens(ModelCapabilities capabilities) {
 
-        return contextWindowTokens - maxCompletionTokens - inputSafetyMargin;
-
+        return capabilities.getContextWindowTokens()
+                - maxCompletionTokens
+                - inputSafetyMargin;
     }
-
 }

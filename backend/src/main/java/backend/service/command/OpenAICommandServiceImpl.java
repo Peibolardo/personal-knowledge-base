@@ -1,5 +1,6 @@
 package backend.service.command;
 
+import backend.config.GlobalContextConfig;
 import backend.dto.ChatRequestDTO;
 import backend.dto.ChatResponseDTO;
 import backend.dto.ChatContextDTO;
@@ -62,13 +63,11 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
     private final ChatStreamEventDeserializer chatStreamEventDeserializer;
     private final EmbeddingCommandService embeddingCommandService;
 
-    private final int maxTokens;
-    private final int summaryThreshold;
     private static final int CONTEXT_BATCH_SIZE = 9;
     private static final int SEMANTIC_CONTEXT_BATCH_SIZE = 10;
-    private final int SEMANTIC_CONTEXT_TOKEN_LIMIT;
     private final TaskExecutor summaryTaskExecutor;
     private final TaskExecutor embeddingTaskExecutor;
+    private final GlobalContextConfig globalContextConfig;
 
     public OpenAICommandServiceImpl(MessageRepository messageRepository,
                                     ConversationRepository conversationRepository,
@@ -79,11 +78,9 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
                                     ChatStreamEventSerializer chatStreamEventSerializer,
                                     ChatStreamEventDeserializer chatStreamEventDeserializer,
                                     EmbeddingCommandService embeddingCommandService,
-                                    @Value("${context.max-tokens-request}") int maxTokens,
-                                    @Value("${summary.threshold}") int summaryThreshold,
-                                    @Value("${semantic.context.max-tokens}") int semanticContextTokenLimit,
                                     @Qualifier("summaryTaskExecutor") TaskExecutor summaryTaskExecutor,
-                                    @Qualifier("embeddingTaskExecutor")TaskExecutor embeddingTaskExecutor) {
+                                    @Qualifier("embeddingTaskExecutor")TaskExecutor embeddingTaskExecutor,
+                                    GlobalContextConfig globalContextConfig) {
 
         this.messageRepository = messageRepository;
         this.conversationRepository = conversationRepository;
@@ -94,12 +91,10 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
         this.chatStreamEventSerializer = chatStreamEventSerializer;
         this.chatStreamEventDeserializer = chatStreamEventDeserializer;
         this.embeddingCommandService = embeddingCommandService;
-        this.maxTokens = maxTokens;
-        this.summaryThreshold = summaryThreshold;
-        this.SEMANTIC_CONTEXT_TOKEN_LIMIT = semanticContextTokenLimit;
-        this.summaryTaskExecutor = summaryTaskExecutor;
 
+        this.summaryTaskExecutor = summaryTaskExecutor;
         this.embeddingTaskExecutor = embeddingTaskExecutor;
+        this.globalContextConfig = globalContextConfig;
     }
 
     /**
@@ -276,7 +271,7 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
                     // 5.2.3.1 Legacy messages have no turn ID, so check their token count individually.
                     if (turnId == null) {
                         int messageTokens = message.getTokenCount() == null ? 0 : message.getTokenCount();
-                        if (tokenCount + messageTokens <= this.maxTokens) {
+                        if (tokenCount + messageTokens <= this.globalContextConfig.getRecentTokenBudget()) {
                             completeContext.add(message);
                             tokenCount += messageTokens;
                         } else {
@@ -304,7 +299,7 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
                             .sum();
 
                     // 5.2.3.5 Add the complete turn only when it fits within the recent-context token limit.
-                    if (tokenCount + turnTokens <= this.maxTokens) {
+                    if (tokenCount + turnTokens <= this.globalContextConfig.getRecentTokenBudget()) {
                         completeContext.addAll(turnMessages);
                         tokenCount += turnTokens;
                     } else {
@@ -606,7 +601,7 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
 
             }
             // If the tokens counted is above the threshold then call the AI Service to summarize the conversation with the new messages and old summary
-            if(tokenCount >= summaryThreshold && newestMessageIncluded != null){
+            if(tokenCount >= globalContextConfig.getSummarizationTrigger() && newestMessageIncluded != null){
 
                 // Order the messages from oldest to newest
                 Collections.reverse(completeContext);
@@ -716,7 +711,7 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
         // 3. Track page offset, consumed tokens, selected messages, and turns already visited.
         int offset = 0;
         int tokenCount = 0;
-        int semanticTokenLimit = SEMANTIC_CONTEXT_TOKEN_LIMIT;
+        int semanticTokenLimit = globalContextConfig.getSemanticTokenBudget();
         boolean tokenBudgetReached = false;
         List<Message> selectedMessages = new ArrayList<>();
         Set<UUID> processedTurnIds = new HashSet<>();
