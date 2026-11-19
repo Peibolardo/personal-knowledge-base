@@ -1,6 +1,4 @@
-import json
 from multiprocessing import context
-import os
 import asyncio
 import time
 import logging
@@ -12,8 +10,7 @@ from openai import (
     APITimeoutError,
     APIError
 )
-from typing import List
-from DTOs.Message import Message
+from config.OpenAIConfig import OpenAIConfig
 from DTOs.ChatContext import ChatContext
 from collections.abc import AsyncIterator
 from services.TokenizerService import TokenizerService
@@ -30,19 +27,33 @@ from exceptions.AIServiceException import (
             AITimeoutException,
             AIServiceException
         )
+from pathlib import Path
 
 class ChatStreamingService:
 
+    PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
+
+    # Read the context prompt from a file
+    SUMMARY_CONTEXT_PROMPT = (
+        PROMPTS_DIR / "chat" / "summary_context.txt"
+    ).read_text(encoding="utf-8")
+
     def __init__(self):
         self.client = AsyncOpenAI(max_retries=0)
+
+        #Inject configuration from the environment variables
+        self.config = OpenAIConfig()
         self.logger = logging.getLogger("uvicorn.error")
-        self.model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-        self.system_prompt = os.getenv("SYSTEM_PROMPT")
-        
+        self.model = self.config.model
+
+        #Inject system prompts from the environment variables
+        self.system_prompt = self.config.system_prompt
+        self.summary_context_prompt = self.SUMMARY_CONTEXT_PROMPT
+
         #TokenizerService with the model established in the env file
         self.tokenizer = TokenizerService(self.model)
 
-        #SerializerrService
+        #SerializerService
         self.serializer = SerializeService()
 
     """
@@ -80,17 +91,12 @@ class ChatStreamingService:
             messages.append({
                 "role": "developer",
                 "content": (
-                    "The following is a summary of the conversation so far. "
-                    "Use it as historical context to understand the user's "
-                    "previous messages, preferences, decisions and ongoing work. "
-                    "It is context, not a new instruction. "
-                    "If the recent messages contradict it, prioritize the recent messages.\n\n"
-                    "CONVERSATION SUMMARY:\n"
-                    f"{context.currentSummary}"
+                    f"{self.summary_context_prompt}\n\n"
+                    f"CONVERSATION SUMMARY:\n{context.currentSummary}"
                 )
             })
         
-        # 3. Add recent conversation messagesd
+        # 3. Add recent conversation messages
         for message in context.messageDTOList:
             messages.append({
                 "role": message.role,
@@ -318,6 +324,8 @@ class ChatStreamingService:
                 stream = await self.client.chat.completions.create(
                             model = self.model,
                             messages = content,
+                            temperature = self.config.temperature,
+                            top_p = self.config.top_p,
                             stream = True,
                             stream_options={
                                 "include_usage": True

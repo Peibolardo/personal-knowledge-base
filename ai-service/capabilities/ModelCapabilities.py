@@ -1,6 +1,6 @@
 from pydantic import BaseModel, ConfigDict, Field
 
-from DTOs.config.PromptCapabilities import PromptCapabilities
+from capabilities.PromptCapabilities import PromptCapabilities
 
 """
 Model capabilities DTO.

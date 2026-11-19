@@ -1,3 +1,5 @@
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
 '''
 Configuration class to set the parameters ready for API calls
 Generation:
@@ -14,15 +16,18 @@ stream -> Determines whether the response is returned progressively as it is gen
 Observability/Configuration:
 metadata -> Allows additional information to be associated with the API request
 '''
-class Configuration:
-    model = ...
-    system_prompt = ...
-    temperature = ...
-    max_completion_tokens = ...
-    top_p = ...
-    response_format = ...
-    stream = ...
-    metadata = ...
+class OpenAIConfig(BaseSettings):
+
+    model_config = SettingsConfigDict(
+            env_file=".env",
+            env_file_encoding="utf-8",
+            extra="ignore"
+        )
+
+    model: str = "gpt-4o-mini"
+    system_prompt: str 
+    temperature: float | None = None
+    top_p: float | None = None
 
 '''
 Ex for json_schema:
