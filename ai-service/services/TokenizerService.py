@@ -10,11 +10,12 @@ So we are working with this service to count the estimated tokens of the message
 class TokenizerService:
 
     '''
-    Contructor to set the encode model
+    Initializes the local tokenizer for the model.
+    The OpenAI API client is created only if the authoritative API token-counting method is used.
     '''
     def __init__(self, model:str):
         self.encoding = tiktoken.encoding_for_model(model)
-        self.client = OpenAI()
+        self.client: OpenAI | None = None
         self.model = model
 
     '''
@@ -36,14 +37,20 @@ class TokenizerService:
         return self.encoding.decode(tokens)
 
     '''
-    Function to retrieve the tokens used in a call to AI API
+    Function to retrieve the authoritative input-token count from the OpenAI API.
+
+    text: Text to tokenize using the selected model.
+    The API client is initialized on first use so local tiktoken counts do not require an API key.
     '''
     def openAITokenizer(self, text:str):
+        if self.client is None:
+            self.client = OpenAI()
 
         response = self.client.responses.input_tokens.count(
                             model = self.model,
                             input=text
                         )
+        
         return response.input_tokens
 
     '''
@@ -62,6 +69,9 @@ class TokenizerService:
 
         if not textTokens:
             return []
+
+        if chunk_size <= 0:
+            raise ValueError("Chunk size must be greater than zero")
 
         if overlap < 0 or overlap >= chunk_size:
             raise ValueError("Overlap must be between 0 and chunk_size")

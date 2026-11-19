@@ -1,19 +1,21 @@
 from fastapi import APIRouter, Depends
 from services.CapabilitiesService import CapabilitiesService
-from DTOs.config.ModelCapabilities import ModelCapabilities
+from capabilities.ModelCapabilities import ModelCapabilities
 from functools import lru_cache
 import logging
 
-# Creation of the router
+# Create the router for the AI service model-capability endpoint.
 router = APIRouter(
-    prefix="/capabilities"  # Predefine the endpoints as /capabilities (Same as RequestMapping in Spring)
+    prefix="/capabilities",
 )
 
 logger = logging.getLogger("uvicorn.error")
 
 
-# Dependency injection function (replaces Spring's @Autowired)
-# Added @lru_cache to reuse last instance of the service and avoid creating a new one for each request
+'''
+Function to provide the CapabilitiesService dependency.
+The service instance is cached so its configuration, prompt files, and calculated token counts are reused across requests.
+'''
 @lru_cache
 def get_capabilities_service() -> CapabilitiesService:
     return CapabilitiesService()
@@ -21,19 +23,18 @@ def get_capabilities_service() -> CapabilitiesService:
 
 '''
 GET /capabilities
-Purpose: Retrieve the capabilities of the LLM model
-Request Body: None
-service: Injected service dependencies to make use of them
+Purpose: Return the configured model limits and static prompt token counts for chat and summarization.
+service: Cached CapabilitiesService dependency used to retrieve the precomputed capability DTO.
+Returns: ModelCapabilities serialized with the JSON field names expected by the Spring backend.
 '''
-@router.get("")
+@router.get("", response_model=ModelCapabilities, response_model_by_alias=True)
 async def get_capabilities(
     service: CapabilitiesService = Depends(get_capabilities_service)
-    ) -> ModelCapabilities:
-    
-    logger.info("Received the request to GET the capabilities of the LLM model")
-    
+) -> ModelCapabilities:
+    logger.info("Received a request for AI model capabilities")
+
     capabilities = service.get_capabilities()
 
-    logger.info("Successfully retrieved the capabilities of the LLM model")
+    logger.info("Successfully returned AI model capabilities for model %s", capabilities.model)
 
     return capabilities

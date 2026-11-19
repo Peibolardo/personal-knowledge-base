@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 
 """
 Operation prompt capabilities DTO.
@@ -8,10 +8,12 @@ class OperationPromptCapabilities(BaseModel):
 
     system_prompt_tokens: int = Field(
         ...,
+        ge=0,
         description="Number of tokens used by the system prompt.",
     )
 
     developer_prompt_tokens: int = Field(
         ...,
+        ge=0,
         description="Number of tokens used by the developer prompt.",
     )
