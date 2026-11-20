@@ -1,4 +1,4 @@
-package backend.config.capabilities;
+package backend.dto.capabilities;
 
 import lombok.Getter;
 import lombok.Setter;

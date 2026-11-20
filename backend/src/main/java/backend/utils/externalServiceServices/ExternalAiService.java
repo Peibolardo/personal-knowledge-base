@@ -1,9 +1,16 @@
 package backend.utils.externalServiceServices;
 
+import backend.dto.capabilities.ModelCapabilities;
 import backend.dto.*;
+import backend.dto.chat.ChatContextDTO;
+import backend.dto.chat.ChatResponseDTO;
+import backend.dto.embeddings.EmbeddingRequestDTO;
+import backend.dto.embeddings.EmbeddingResponseDTO;
+import backend.dto.embeddings.QueryEmbeddingResponseDTO;
 import backend.exception.customExceptions.ExternalServiceOperationException;
 import backend.exception.customExceptions.UnreachableExternalServiceException;
 import backend.utils.externalServiceServices.feign_clients.AiApiFeignClient;
+import backend.utils.externalServiceServices.feign_clients.CapabilitiesFeignClient;
 import backend.utils.externalServiceServices.feign_clients.EmbeddingApiFeignClient;
 import feign.RetryableException;
 import org.slf4j.Logger;
@@ -25,11 +32,18 @@ public class ExternalAiService {
 
     private static final Logger logger = LoggerFactory.getLogger(ExternalAiService.class);
     private final AiApiFeignClient aiApiFeignClient;
+    private final CapabilitiesFeignClient capabilitiesFeignClient;
     private final EmbeddingApiFeignClient embeddingApiFeignClient;
     private final WebClient aiWebClient;
 
-    public ExternalAiService(AiApiFeignClient aiApiFeignClient, EmbeddingApiFeignClient embeddingApiFeignClient, WebClient aiWebClient) {
+    public ExternalAiService(
+            AiApiFeignClient aiApiFeignClient,
+            CapabilitiesFeignClient capabilitiesFeignClient,
+            EmbeddingApiFeignClient embeddingApiFeignClient,
+            WebClient aiWebClient
+    ) {
         this.aiApiFeignClient = aiApiFeignClient;
+        this.capabilitiesFeignClient = capabilitiesFeignClient;
         this.embeddingApiFeignClient = embeddingApiFeignClient;
         this.aiWebClient = aiWebClient;
     }
@@ -132,6 +146,27 @@ public class ExternalAiService {
         }
 
     }
+
+    /**
+     * Retrieves the active model limits and static prompt token counts from the Python AI service.
+     *
+     * @return capabilities used by the backend to calculate the available context budget
+     */
+    public ModelCapabilities getModelCapabilities() {
+
+        try {
+            logger.info("Requesting model capabilities from the AI Service through the Feign client");
+            return capabilitiesFeignClient.getCapabilities();
+
+        } catch (RetryableException e) {
+            logger.warn("Failed to reach the AI Service while retrieving model capabilities: {}", e.toString());
+            throw new UnreachableExternalServiceException("External service is unreachable..");
+        } catch (Exception e) {
+            logger.warn("Unexpected error response from the AI Service while retrieving model capabilities: {}", e.toString());
+            throw new ExternalServiceOperationException("Unexpected external service error");
+        }
+    }
+
     /**
      * Sends message content to the Python AI service to generate its embedding chunks.
      * @param embeddingRequestDTO request containing the content to split and embed

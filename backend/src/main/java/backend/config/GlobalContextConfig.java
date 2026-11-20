@@ -1,6 +1,6 @@
 package backend.config;
 
-import backend.config.capabilities.ModelCapabilities;
+import backend.dto.capabilities.ModelCapabilities;
 import lombok.Getter;
 import lombok.Setter;
 //Binds application.properties to our Config attributes looking for the prefix

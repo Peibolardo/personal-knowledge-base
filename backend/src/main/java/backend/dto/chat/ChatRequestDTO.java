@@ -1,4 +1,4 @@
-package backend.dto;
+package backend.dto.chat;
 
 import jakarta.validation.constraints.*;
 import lombok.AllArgsConstructor;

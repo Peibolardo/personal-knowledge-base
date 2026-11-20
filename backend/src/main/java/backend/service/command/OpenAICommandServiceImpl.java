@@ -1,9 +1,9 @@
 package backend.service.command;
 
 import backend.config.GlobalContextConfig;
-import backend.dto.ChatRequestDTO;
-import backend.dto.ChatResponseDTO;
-import backend.dto.ChatContextDTO;
+import backend.dto.chat.ChatRequestDTO;
+import backend.dto.chat.ChatResponseDTO;
+import backend.dto.chat.ChatContextDTO;
 import backend.dto.MessageDTO;
 import backend.exception.customExceptions.ConflictException;
 import backend.exception.customExceptions.ExternalServiceOperationException;
@@ -28,7 +28,6 @@ import backend.utils.externalServiceServices.ExternalAiService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.task.TaskExecutor;
 import org.springframework.core.task.TaskRejectedException;
 import org.springframework.data.domain.PageRequest;

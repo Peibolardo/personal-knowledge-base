@@ -1,4 +1,4 @@
-package backend.config.capabilities;
+package backend.dto.capabilities;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Getter;

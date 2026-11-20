@@ -1,4 +1,4 @@
-package backend.dto;
+package backend.dto.embeddings;
 
 import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;

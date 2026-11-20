@@ -1,5 +1,6 @@
-package backend.dto;
+package backend.dto.chat;
 
+import backend.dto.MessageDTO;
 import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
