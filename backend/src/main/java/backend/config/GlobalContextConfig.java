@@ -28,9 +28,9 @@ public class GlobalContextConfig {
     private int semanticTokenBudget;
 
     /**
-     * 	Maximum completion tokens reserved for the response
+     * 	Maximum completion tokens reserved for chat completions/requestAPI response
      */
-    private int maxCompletionTokens;
+    private int chatTokenBudget;
 
     /**
      * 	Maximum tokens generated when creating/updating the summary
@@ -53,7 +53,7 @@ public class GlobalContextConfig {
     public int getAvailableInputTokens(ModelCapabilities capabilities) {
 
         return capabilities.getContextWindowTokens()
-                - maxCompletionTokens
+                - chatTokenBudget
                 - inputSafetyMargin;
     }
 }

@@ -14,6 +14,7 @@ import backend.mapper.MessageChatResponseMapper;
 import backend.mapper.MessageMapper;
 import backend.model.Conversation;
 import backend.model.Message;
+import backend.provider.ModelCapabilitiesProvider;
 import backend.repository.ConversationRepository;
 import backend.repository.MessageRepository;
 import backend.service.interfaces.EmbeddingCommandService;
@@ -67,6 +68,7 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
     private final TaskExecutor summaryTaskExecutor;
     private final TaskExecutor embeddingTaskExecutor;
     private final GlobalContextConfig globalContextConfig;
+    private final ModelCapabilitiesProvider modelCapabilitiesProvider;
 
     public OpenAICommandServiceImpl(MessageRepository messageRepository,
                                     ConversationRepository conversationRepository,
@@ -79,7 +81,8 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
                                     EmbeddingCommandService embeddingCommandService,
                                     @Qualifier("summaryTaskExecutor") TaskExecutor summaryTaskExecutor,
                                     @Qualifier("embeddingTaskExecutor")TaskExecutor embeddingTaskExecutor,
-                                    GlobalContextConfig globalContextConfig) {
+                                    GlobalContextConfig globalContextConfig,
+                                    ModelCapabilitiesProvider modelCapabilitiesProvider) {
 
         this.messageRepository = messageRepository;
         this.conversationRepository = conversationRepository;
@@ -94,6 +97,7 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
         this.summaryTaskExecutor = summaryTaskExecutor;
         this.embeddingTaskExecutor = embeddingTaskExecutor;
         this.globalContextConfig = globalContextConfig;
+        this.modelCapabilitiesProvider = modelCapabilitiesProvider;
     }
 
     /**
@@ -108,7 +112,7 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
     public ChatResponseDTO sendMessageToApi(ChatRequestDTO chatRequestDTO){
 
         // 1. Prepare the context messages
-        PreparedMessages preparedMessages = prepareMessages(chatRequestDTO);
+        PreparedMessages preparedMessages = prepareRecentMessages(chatRequestDTO);
 
         // 2. Save the requestMessage Message object
         Message messageRequest = preparedMessages.requestMessage;
@@ -158,7 +162,7 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
      *    If so, emit a fallback SSE error event; otherwise, complete without emitting anything.
      *
      * Important:
-     * - prepareMessages() executes before the deferred publisher is subscribed to.
+     * - prepareRecentMessages() executes before the deferred publisher is subscribed to.
      * - started tracks event emission, not whether the HTTP response has been committed.
      * - concatMap() preserves sequential event processing, which is necessary to accumulate
      *   the assistant's response before persisting it when the done event arrives.
@@ -169,9 +173,9 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
     public Flux<ServerSentEvent<String>> sendMessageToApiStreaming(ChatRequestDTO chatRequestDTO){
 
         // 1. Prepare the recent context and current request using the existing message preparation flow.
-        PreparedMessages preparedMessages = prepareMessages(chatRequestDTO);
+        PreparedMessages preparedMessages = prepareRecentMessages(chatRequestDTO);
 
-        // 2. Retrieve semantic history separately so prepareMessages keeps its existing behavior and ordering.
+        // 2. Retrieve semantic history separately so prepareRecentMessages keeps its existing behavior and ordering.
         PreparedMessages semanticMessages = prepareSemanticContext(preparedMessages);
 
         // 3. Append the already prepared recent context after semantic messages, omitting exact DTO duplicates.
@@ -219,11 +223,11 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
     }
 
     /**
-     * Function to prepare the messages to send to the AI
+     * Function to prepare the recent context messages to send to the AI
      * @param chatRequestDTO DTO of the request send by the user
      * @return PreparedMessages record with the Message of requestMessage object and the List of Message for the context
      */
-    private PreparedMessages prepareMessages(ChatRequestDTO chatRequestDTO){
+    private PreparedMessages prepareRecentMessages(ChatRequestDTO chatRequestDTO){
 
         // 1. Initialize a list to store the context window
         List<MessageDTO> messageDTOList = new ArrayList<MessageDTO>();
@@ -326,7 +330,7 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
 
     /**
      * Groups the user message entity and the prepared context messages
-     * so both can be returned from prepareMessages().
+     * so both can be returned from prepareRecentMessages().
      */
     private record PreparedMessages(Message requestMessage, List<MessageDTO> context){}
 
@@ -680,7 +684,7 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
      * Builds a chronological context from the most relevant complete turns without exceeding the token budget.
      * Embeds the current request once, pages through unique turn candidates, and adds each fitting turn only once.
      *
-     * @param preparedMessages request message and context already selected by {@code prepareMessages}
+     * @param preparedMessages request message and context already selected by {@code prepareRecentMessages}
      * @return the request message and semantic history, excluding messages already in the prepared context
      * @throws InvalidRequestException if the request does not belong to a valid conversation
      * @throws ExternalServiceOperationException if embedding or retrieval returns invalid data
@@ -763,7 +767,7 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
 
                 int turnTokens = turnMessages.stream().mapToInt(Message::getTokenCount).sum();
 
-                // 7. Do not add a turn if its messages already appear in the recent context from prepareMessages.
+                // 7. Do not add a turn if its messages already appear in the recent context from prepareRecentMessages.
                 List<MessageDTO> turnDTOs = messageMapper.toDtoList(turnMessages);
                 if (turnDTOs.stream().anyMatch(preparedMessages.context()::contains)) {
                     continue;
