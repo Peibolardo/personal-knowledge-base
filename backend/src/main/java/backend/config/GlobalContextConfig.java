@@ -48,12 +48,23 @@ public class GlobalContextConfig {
     private int inputSafetyMargin;
 
     /**
-     * Helper function to retrieve the available context window tokens
+     * Helper function to retrieve the available context window tokens for chat
      */
-    public int getAvailableInputTokens(ModelCapabilities capabilities) {
+    public int getAvailableChatInputTokens(ModelCapabilities capabilities) {
 
         return capabilities.getContextWindowTokens()
                 - chatTokenBudget
+                - summaryTokenBudget
+                - inputSafetyMargin;
+    }
+
+    /**
+     * Helper function to retrieve the available context window tokens for summarization
+     */
+    public int getAvailableSummaryInputTokens(ModelCapabilities capabilities) {
+
+        return capabilities.getContextWindowTokens()
+                - summaryTokenBudget
                 - inputSafetyMargin;
     }
 }

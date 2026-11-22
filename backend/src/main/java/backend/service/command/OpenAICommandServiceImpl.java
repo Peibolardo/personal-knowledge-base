@@ -14,7 +14,6 @@ import backend.mapper.MessageChatResponseMapper;
 import backend.mapper.MessageMapper;
 import backend.model.Conversation;
 import backend.model.Message;
-import backend.provider.ModelCapabilitiesProvider;
 import backend.repository.ConversationRepository;
 import backend.repository.MessageRepository;
 import backend.service.interfaces.EmbeddingCommandService;
@@ -25,6 +24,7 @@ import backend.sse.DTOs.ChatStreamErrorDTO;
 import backend.sse.DTOs.ChatStreamMetadataDTO;
 import backend.sse.utils.ChatStreamEventDeserializer;
 import backend.sse.utils.ChatStreamEventSerializer;
+import backend.utils.ContextBudget;
 import backend.utils.externalServiceServices.ExternalAiService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -68,7 +68,7 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
     private final TaskExecutor summaryTaskExecutor;
     private final TaskExecutor embeddingTaskExecutor;
     private final GlobalContextConfig globalContextConfig;
-    private final ModelCapabilitiesProvider modelCapabilitiesProvider;
+    private final ContextBudget contextBudget;
 
     public OpenAICommandServiceImpl(MessageRepository messageRepository,
                                     ConversationRepository conversationRepository,
@@ -82,7 +82,8 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
                                     @Qualifier("summaryTaskExecutor") TaskExecutor summaryTaskExecutor,
                                     @Qualifier("embeddingTaskExecutor")TaskExecutor embeddingTaskExecutor,
                                     GlobalContextConfig globalContextConfig,
-                                    ModelCapabilitiesProvider modelCapabilitiesProvider) {
+                                    ContextBudget contextBudget
+    ) {
 
         this.messageRepository = messageRepository;
         this.conversationRepository = conversationRepository;
@@ -97,7 +98,7 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
         this.summaryTaskExecutor = summaryTaskExecutor;
         this.embeddingTaskExecutor = embeddingTaskExecutor;
         this.globalContextConfig = globalContextConfig;
-        this.modelCapabilitiesProvider = modelCapabilitiesProvider;
+        this.contextBudget = contextBudget;
     }
 
     /**
@@ -184,6 +185,16 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
             if (!combinedContext.contains(message)) {
                 combinedContext.add(message);
             }
+        }
+
+        // 3.1 Check that the context messages do not surpass the budget available for the call
+        int tokensContext = 0;
+        for(MessageDTO message: combinedContext){
+            tokensContext += message.getTokenCount();
+        }
+
+        if(tokensContext > this.contextBudget.getChatDynamicContextBudget()){
+            throw new ConflictException("The context messages surpass the chat budget");
         }
 
         // 4. Set the summary and merged context into the Context DTO to send.
@@ -367,7 +378,6 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
     private String generateTitle(String message) {
         return message.length() > 30 ? message.substring(0, 30) + "..." : message;
     }
-
 
     /**
      * Processes an SSE event received from the AI service.
