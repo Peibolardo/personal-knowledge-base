@@ -18,7 +18,12 @@ import org.springframework.context.annotation.Configuration;
 public class GlobalContextConfig {
 
     /**
-     * Maximum tokens allocated to recent messages, including the request message
+     * Maximum tokens allocated to request message
+     */
+    private int requestMessageTokenBudget;
+
+    /**
+     * Maximum tokens allocated to recent messages, excluding the request message
      */
     private int recentTokenBudget;
 
@@ -53,6 +58,7 @@ public class GlobalContextConfig {
     public int getAvailableChatInputTokens(ModelCapabilities capabilities) {
 
         return capabilities.getContextWindowTokens()
+                - requestMessageTokenBudget
                 - chatTokenBudget
                 - summaryTokenBudget
                 - inputSafetyMargin;
