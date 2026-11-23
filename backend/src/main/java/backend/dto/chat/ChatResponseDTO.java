@@ -1,4 +1,4 @@
-package backend.dto;
+package backend.dto.chat;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.constraints.*;

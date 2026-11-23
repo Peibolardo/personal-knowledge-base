@@ -1,7 +1,7 @@
 package backend.utils.externalServiceServices.feign_clients;
 
-import backend.dto.ChatResponseDTO;
-import backend.dto.ChatContextDTO;
+import backend.dto.chat.ChatResponseDTO;
+import backend.dto.chat.ChatContextDTO;
 import backend.dto.MessageDTO;
 import jakarta.validation.Valid;
 import org.springframework.cloud.openfeign.FeignClient;

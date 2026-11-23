@@ -1,9 +1,9 @@
 package backend.service.command;
 
-import backend.dto.EmbeddingChunkDTO;
-import backend.dto.EmbeddingRequestDTO;
-import backend.dto.EmbeddingResponseDTO;
-import backend.dto.QueryEmbeddingResponseDTO;
+import backend.dto.embeddings.EmbeddingChunkDTO;
+import backend.dto.embeddings.EmbeddingRequestDTO;
+import backend.dto.embeddings.EmbeddingResponseDTO;
+import backend.dto.embeddings.QueryEmbeddingResponseDTO;
 import backend.exception.customExceptions.ExternalServiceOperationException;
 import backend.exception.customExceptions.InvalidRequestException;
 import backend.exception.customExceptions.ResourceNotFoundException;

@@ -1,7 +1,7 @@
 package backend.service.interfaces;
 
-import backend.dto.ChatRequestDTO;
-import backend.dto.ChatResponseDTO;
+import backend.dto.chat.ChatRequestDTO;
+import backend.dto.chat.ChatResponseDTO;
 import backend.exception.customExceptions.ExternalServiceOperationException;
 import backend.exception.customExceptions.InvalidRequestException;
 import backend.exception.customExceptions.UnreachableExternalServiceException;

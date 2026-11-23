@@ -1,8 +1,9 @@
 package backend.service.command;
 
-import backend.dto.ChatRequestDTO;
-import backend.dto.ChatResponseDTO;
-import backend.dto.ChatContextDTO;
+import backend.config.GlobalContextConfig;
+import backend.dto.chat.ChatRequestDTO;
+import backend.dto.chat.ChatResponseDTO;
+import backend.dto.chat.ChatContextDTO;
 import backend.dto.MessageDTO;
 import backend.exception.customExceptions.ConflictException;
 import backend.exception.customExceptions.ExternalServiceOperationException;
@@ -23,11 +24,11 @@ import backend.sse.DTOs.ChatStreamErrorDTO;
 import backend.sse.DTOs.ChatStreamMetadataDTO;
 import backend.sse.utils.ChatStreamEventDeserializer;
 import backend.sse.utils.ChatStreamEventSerializer;
+import backend.utils.ContextBudget;
 import backend.utils.externalServiceServices.ExternalAiService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.task.TaskExecutor;
 import org.springframework.core.task.TaskRejectedException;
 import org.springframework.data.domain.PageRequest;
@@ -62,13 +63,12 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
     private final ChatStreamEventDeserializer chatStreamEventDeserializer;
     private final EmbeddingCommandService embeddingCommandService;
 
-    private final int maxTokens;
-    private final int summaryThreshold;
     private static final int CONTEXT_BATCH_SIZE = 9;
     private static final int SEMANTIC_CONTEXT_BATCH_SIZE = 10;
-    private final int SEMANTIC_CONTEXT_TOKEN_LIMIT;
     private final TaskExecutor summaryTaskExecutor;
     private final TaskExecutor embeddingTaskExecutor;
+    private final GlobalContextConfig globalContextConfig;
+    private final ContextBudget contextBudget;
 
     public OpenAICommandServiceImpl(MessageRepository messageRepository,
                                     ConversationRepository conversationRepository,
@@ -79,11 +79,11 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
                                     ChatStreamEventSerializer chatStreamEventSerializer,
                                     ChatStreamEventDeserializer chatStreamEventDeserializer,
                                     EmbeddingCommandService embeddingCommandService,
-                                    @Value("${context.max-tokens-request}") int maxTokens,
-                                    @Value("${summary.threshold}") int summaryThreshold,
-                                    @Value("${semantic.context.max-tokens}") int semanticContextTokenLimit,
                                     @Qualifier("summaryTaskExecutor") TaskExecutor summaryTaskExecutor,
-                                    @Qualifier("embeddingTaskExecutor")TaskExecutor embeddingTaskExecutor) {
+                                    @Qualifier("embeddingTaskExecutor")TaskExecutor embeddingTaskExecutor,
+                                    GlobalContextConfig globalContextConfig,
+                                    ContextBudget contextBudget
+    ) {
 
         this.messageRepository = messageRepository;
         this.conversationRepository = conversationRepository;
@@ -94,12 +94,11 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
         this.chatStreamEventSerializer = chatStreamEventSerializer;
         this.chatStreamEventDeserializer = chatStreamEventDeserializer;
         this.embeddingCommandService = embeddingCommandService;
-        this.maxTokens = maxTokens;
-        this.summaryThreshold = summaryThreshold;
-        this.SEMANTIC_CONTEXT_TOKEN_LIMIT = semanticContextTokenLimit;
-        this.summaryTaskExecutor = summaryTaskExecutor;
 
+        this.summaryTaskExecutor = summaryTaskExecutor;
         this.embeddingTaskExecutor = embeddingTaskExecutor;
+        this.globalContextConfig = globalContextConfig;
+        this.contextBudget = contextBudget;
     }
 
     /**
@@ -113,8 +112,8 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
      */
     public ChatResponseDTO sendMessageToApi(ChatRequestDTO chatRequestDTO){
 
-        // 1. Prepare the context messages
-        PreparedMessages preparedMessages = prepareMessages(chatRequestDTO);
+        // 1. Prepare recent context within the existing configured recent-context limit.
+        PreparedMessages preparedMessages = prepareRecentMessages(chatRequestDTO, globalContextConfig.getRecentTokenBudget());
 
         // 2. Save the requestMessage Message object
         Message messageRequest = preparedMessages.requestMessage;
@@ -164,7 +163,7 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
      *    If so, emit a fallback SSE error event; otherwise, complete without emitting anything.
      *
      * Important:
-     * - prepareMessages() executes before the deferred publisher is subscribed to.
+     * - prepareRecentMessages() executes before the deferred publisher is subscribed to.
      * - started tracks event emission, not whether the HTTP response has been committed.
      * - concatMap() preserves sequential event processing, which is necessary to accumulate
      *   the assistant's response before persisting it when the done event arrives.
@@ -174,26 +173,35 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
      */
     public Flux<ServerSentEvent<String>> sendMessageToApiStreaming(ChatRequestDTO chatRequestDTO){
 
-        // 1. Prepare the recent context and current request using the existing message preparation flow.
-        PreparedMessages preparedMessages = prepareMessages(chatRequestDTO);
+        // 1. Calculate the model-based input budget once for this call and prepare recent context first.
+        int remainingTokens = contextBudget.getChatDynamicContextBudget();
+        int dynamicContextBudget = remainingTokens;
+        PreparedMessages recentMessages = prepareRecentMessages(chatRequestDTO, remainingTokens);
+        remainingTokens = recentMessages.remainingTokens();
 
-        // 2. Retrieve semantic history separately so prepareMessages keeps its existing behavior and ordering.
-        PreparedMessages semanticMessages = prepareSemanticContext(preparedMessages);
+        // 2. Pass only the unused budget to semantic retrieval, preserving priority for recent messages.
+        PreparedMessages semanticMessages = prepareSemanticContext(recentMessages);
+        remainingTokens = semanticMessages.remainingTokens();
 
         // 3. Append the already prepared recent context after semantic messages, omitting exact DTO duplicates.
         List<MessageDTO> combinedContext = new ArrayList<>(semanticMessages.context());
-        for (MessageDTO message : preparedMessages.context()) {
+        for (MessageDTO message : recentMessages.context()) {
             if (!combinedContext.contains(message)) {
                 combinedContext.add(message);
             }
         }
 
+        // 3.1 Keep the final check against the original capability-based budget as a safety guard.
+        checkContextWithCapabilities(combinedContext, dynamicContextBudget);
+
+        logger.info("Prepared streaming context; {} dynamic input tokens remain", remainingTokens);
+
         // 4. Set the summary and merged context into the Context DTO to send.
-        Conversation conversation = preparedMessages.requestMessage.getConversation();
-        ChatContextDTO chatContextDTO = new ChatContextDTO(conversation.getSummary(), combinedContext);
+        Conversation conversation = recentMessages.requestMessage.getConversation();
+        ChatContextDTO chatContextDTO = new ChatContextDTO(conversation.getSummary(), this.globalContextConfig.getChatTokenBudget(),combinedContext);
 
         // 5. Keep the original request message for persistence after the stream completes.
-        Message messageRequest = preparedMessages.requestMessage;
+        Message messageRequest = recentMessages.requestMessage;
 
         // 6. Send the merged context to the API and receive the Stream/Flux response.
         return Flux.defer(() -> {
@@ -225,11 +233,12 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
     }
 
     /**
-     * Function to prepare the messages to send to the AI
-     * @param chatRequestDTO DTO of the request send by the user
-     * @return PreparedMessages record with the Message of requestMessage object and the List of Message for the context
+     * Function to prepare the recent context messages to send to the AI
+     * @param chatRequestDTO DTO containing the user request
+     * @param remainingTokens token budget available before recent context is selected
+     * @return PreparedMessages with the persisted request, selected recent context, and remaining budget
      */
-    private PreparedMessages prepareMessages(ChatRequestDTO chatRequestDTO){
+    private PreparedMessages prepareRecentMessages(ChatRequestDTO chatRequestDTO, int remainingTokens){
 
         // 1. Initialize a list to store the context window
         List<MessageDTO> messageDTOList = new ArrayList<MessageDTO>();
@@ -245,6 +254,10 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
         // 4. Map the Message Object to the DTO to send
         MessageDTO messageDTO = messageMapper.toDTO(messageRequest);
 
+        // 5. Keep the recent-message allocation within both the model budget and configured recent-context limit.
+        int recentTokenLimit = Math.min(remainingTokens, globalContextConfig.getRecentTokenBudget());
+        int tokenCount = 0;
+
         // 5.1 If conversationId null send just the new message
         if(isNewConversation(chatRequestDTO)){
             messageDTOList.add(messageDTO);
@@ -254,9 +267,8 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
             // 5.2.1 Checks if the conversationId is valid
             validateUuids(chatRequestDTO.getConversationId());
 
-            // 5.2.2 Create variables to hold the token counting, the page to retrieve the pageable data and checker if the context threshold was reached
+            // 5.2.2 Track the recent-context token count, page, and turns already processed.
             boolean budgetReached = false;
-            int tokenCount = 0;
             int actualPage = 0;
             List<Message> completeContext = new ArrayList<>();
             Set<UUID> processedTurnIds = new HashSet<>();
@@ -276,7 +288,7 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
                     // 5.2.3.1 Legacy messages have no turn ID, so check their token count individually.
                     if (turnId == null) {
                         int messageTokens = message.getTokenCount() == null ? 0 : message.getTokenCount();
-                        if (tokenCount + messageTokens <= this.maxTokens) {
+                        if (tokenCount + messageTokens <= recentTokenLimit) {
                             completeContext.add(message);
                             tokenCount += messageTokens;
                         } else {
@@ -304,7 +316,7 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
                             .sum();
 
                     // 5.2.3.5 Add the complete turn only when it fits within the recent-context token limit.
-                    if (tokenCount + turnTokens <= this.maxTokens) {
+                    if (tokenCount + turnTokens <= recentTokenLimit) {
                         completeContext.addAll(turnMessages);
                         tokenCount += turnTokens;
                     } else {
@@ -326,15 +338,15 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
             messageDTOList.add(messageDTO);
         }
 
-        return new PreparedMessages(messageRequest, messageDTOList);
+        // 6. Return the remaining model-based budget after the recent messages have been selected.
+        return new PreparedMessages(messageRequest, messageDTOList, remainingTokens - tokenCount);
 
     }
 
     /**
-     * Groups the user message entity and the prepared context messages
-     * so both can be returned from prepareMessages().
+     * Carries the request, context messages, and unspent model-based token budget between preparation steps.
      */
-    private record PreparedMessages(Message requestMessage, List<MessageDTO> context){}
+    private record PreparedMessages(Message requestMessage, List<MessageDTO> context, int remainingTokens){}
 
     /**
      * Method to check if the message belongs to the first of a conversation or not
@@ -368,6 +380,26 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
      */
     private String generateTitle(String message) {
         return message.length() > 30 ? message.substring(0, 30) + "..." : message;
+    }
+
+    /**
+     * Small helper to check the context introduced is valid comparing it to the capabilities of the model used
+     * @param context List of the messages containing the context
+     * @param dynamicContext the maximum context allowed for the request
+     */
+    private void checkContextWithCapabilities(List<MessageDTO> context, int dynamicContext){
+
+        int tokensContext = 0;
+
+        for (int i = 0; i < context.size() - 1; i++) {
+            int messageTokens = context.get(i).getTokenCount() == null ? 0 : context.get(i).getTokenCount();
+            tokensContext = Math.addExact(tokensContext, messageTokens);
+        }
+
+        if(tokensContext > dynamicContext){
+            throw new ConflictException("The context messages exceed the available token budget");
+        }
+
     }
 
 
@@ -606,14 +638,18 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
 
             }
             // If the tokens counted is above the threshold then call the AI Service to summarize the conversation with the new messages and old summary
-            if(tokenCount >= summaryThreshold && newestMessageIncluded != null){
+            if(tokenCount >= globalContextConfig.getSummarizationTrigger() && newestMessageIncluded != null){
 
                 // Order the messages from oldest to newest
                 Collections.reverse(completeContext);
 
                 List <MessageDTO> completeContextDTO = messageMapper.toDtoList(completeContext);
+
+                // Check that the context messages do not surpass the budget available for the call
+                checkContextWithCapabilities(completeContextDTO, this.contextBudget.getSummaryDynamicContextBudget());
+
                 // Build the DTO to send with summary and the list of new messages
-                ChatContextDTO conversationSummary = new ChatContextDTO(conversation.getSummary(), completeContextDTO);
+                ChatContextDTO conversationSummary = new ChatContextDTO(conversation.getSummary(), this.globalContextConfig.getSummaryTokenBudget() ,completeContextDTO);
 
                 logger.info("Summarizing {} new messages. Oldest included ID: {}, previous checkpoint: {}", completeContext.size(), newestMessageIncluded.getId(), conversation.getLastSummarizedMessageId());
 
@@ -683,11 +719,11 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
     }
 
     /**
-     * Builds a chronological context from the most relevant complete turns without exceeding the token budget.
-     * Embeds the current request once, pages through unique turn candidates, and adds each fitting turn only once.
+     * Builds chronological semantic history using only the token budget left after recent context is selected.
+     * Embeds the current request once, pages through unique turn candidates, and tracks the unspent budget.
      *
-     * @param preparedMessages request message and context already selected by {@code prepareMessages}
-     * @return the request message and semantic history, excluding messages already in the prepared context
+     * @param preparedMessages request message and context already selected by {@code prepareRecentMessages}
+     * @return semantic history and the remaining budget after adding selected turns
      * @throws InvalidRequestException if the request does not belong to a valid conversation
      * @throws ExternalServiceOperationException if embedding or retrieval returns invalid data
      */
@@ -706,8 +742,17 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
         if (embeddingModel == null || embeddingModel.isBlank()) {
             // 1.1 A new or legacy conversation without indexed chunks contributes no semantic history.
             logger.info("Skipping semantic retrieval for conversation {} because it has no embedding model", conversationId);
-            return new PreparedMessages(requestMessage, new ArrayList<>());
+            return new PreparedMessages(requestMessage, new ArrayList<>(), preparedMessages.remainingTokens());
 
+        }
+
+        // 1.2 Apply the semantic threshold only to the budget remaining after recent context was prepared.
+        int semanticTokenLimit = Math.min(
+                preparedMessages.remainingTokens(), globalContextConfig.getSemanticTokenBudget()
+        );
+        if (semanticTokenLimit <= 0) {
+            logger.info("Skipping semantic retrieval for conversation {} because no context tokens remain", conversationId);
+            return new PreparedMessages(requestMessage, new ArrayList<>(), preparedMessages.remainingTokens());
         }
 
         // 2. Generate the query vector once; subsequent pages reuse the same PostgreSQL vector literal.
@@ -716,7 +761,6 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
         // 3. Track page offset, consumed tokens, selected messages, and turns already visited.
         int offset = 0;
         int tokenCount = 0;
-        int semanticTokenLimit = SEMANTIC_CONTEXT_TOKEN_LIMIT;
         boolean tokenBudgetReached = false;
         List<Message> selectedMessages = new ArrayList<>();
         Set<UUID> processedTurnIds = new HashSet<>();
@@ -769,23 +813,24 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
 
                 int turnTokens = turnMessages.stream().mapToInt(Message::getTokenCount).sum();
 
-                // 7. Do not add a turn if its messages already appear in the recent context from prepareMessages.
+                // 7. Do not add a turn if its messages already appear in the recent context from prepareRecentMessages.
                 List<MessageDTO> turnDTOs = messageMapper.toDtoList(turnMessages);
                 if (turnDTOs.stream().anyMatch(preparedMessages.context()::contains)) {
                     continue;
                 }
 
-                // 8. Add a turn atomically only when both messages fit within the remaining semantic context budget.
-                if (tokenCount + turnTokens <= semanticTokenLimit) {
+                // 8. Stop at the first ranked turn that cannot fit; preserve its remaining budget for this call.
+                if (tokenCount + turnTokens > semanticTokenLimit) {
+                    tokenBudgetReached = true;
+                    break;
+                }
 
-                    selectedMessages.addAll(turnMessages);
-                    tokenCount += turnTokens;
+                selectedMessages.addAll(turnMessages);
+                tokenCount += turnTokens;
 
-                    if (tokenCount >= semanticTokenLimit) {
-
-                        tokenBudgetReached = true;
-                        break;
-                    }
+                if (tokenCount >= semanticTokenLimit) {
+                    tokenBudgetReached = true;
+                    break;
                 }
             }
         }
@@ -793,7 +838,7 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
         // 9. Sort semantic history chronologically and return it without re-adding the request message.
         selectedMessages.sort((first, second) -> first.getCreationDate().compareTo(second.getCreationDate()));
         List<MessageDTO> context = messageMapper.toDtoList(selectedMessages);
-        return new PreparedMessages(requestMessage, context);
+        return new PreparedMessages(requestMessage, context, preparedMessages.remainingTokens() - tokenCount);
 
     }
 

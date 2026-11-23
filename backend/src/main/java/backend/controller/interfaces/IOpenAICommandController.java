@@ -1,7 +1,7 @@
 package backend.controller.interfaces;
 
-import backend.dto.ChatRequestDTO;
-import backend.dto.ChatResponseDTO;
+import backend.dto.chat.ChatRequestDTO;
+import backend.dto.chat.ChatResponseDTO;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;

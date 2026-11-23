@@ -37,7 +37,7 @@ class OpenAiService:
 
     # Read the summary system prompt from a file
     SUMMARY_SYSTEM_PROMPT = (
-        PROMPTS_DIR / "summary_system_prompt.txt"
+        PROMPTS_DIR / "summarization" / "summary_system_prompt.txt"
     ).read_text(encoding="utf-8")
 
     #Constructor to initialize the class
@@ -219,7 +219,7 @@ class OpenAiService:
                 response = self.client.chat.completions.create(
                             model = self.model,
                             messages = messages,
-                            max_completion_tokens = 1500
+                            max_completion_tokens = chatContext.maxCompletionTokens
                         )
 
                 # Get the updated summary from the response

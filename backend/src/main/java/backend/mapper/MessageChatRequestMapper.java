@@ -1,5 +1,5 @@
 package backend.mapper;
-import backend.dto.ChatRequestDTO;
+import backend.dto.chat.ChatRequestDTO;
 import backend.model.Message;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;

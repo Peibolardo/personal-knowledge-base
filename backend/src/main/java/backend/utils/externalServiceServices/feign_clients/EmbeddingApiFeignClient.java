@@ -1,8 +1,8 @@
 package backend.utils.externalServiceServices.feign_clients;
 
-import backend.dto.EmbeddingRequestDTO;
-import backend.dto.EmbeddingResponseDTO;
-import backend.dto.QueryEmbeddingResponseDTO;
+import backend.dto.embeddings.EmbeddingRequestDTO;
+import backend.dto.embeddings.EmbeddingResponseDTO;
+import backend.dto.embeddings.QueryEmbeddingResponseDTO;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;

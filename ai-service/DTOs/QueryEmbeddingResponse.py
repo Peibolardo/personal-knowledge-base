@@ -1,6 +1,5 @@
 from pydantic import BaseModel
 
-
 """
 Query Embedding Response DTO containing the vector for a complete user message.
 embedding: Vector generated for the full query without chunking.

@@ -1,4 +1,4 @@
-package backend.dto;
+package backend.dto.embeddings;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;

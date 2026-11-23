@@ -1,6 +1,6 @@
 package backend.mapper;
 
-import backend.dto.EmbeddingChunkDTO;
+import backend.dto.embeddings.EmbeddingChunkDTO;
 import backend.model.MessageChunk;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;

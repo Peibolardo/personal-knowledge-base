@@ -10,6 +10,7 @@ load_dotenv()
 # Import router
 from routers.ChatRouter import router as chat_router
 from routers.EmbeddingRouter import router as embedding_router
+from routers.CapabilitiesRouter import router as capabilities_router
 
 # Singleton instance of FastAPI in the hole project
 app = FastAPI()
@@ -17,6 +18,7 @@ app = FastAPI()
 # Connect router to the main app
 app.include_router(chat_router)
 app.include_router(embedding_router)
+app.include_router(capabilities_router)
 
 # Add exception handler
 app.add_exception_handler(AIServiceException, handle_ai_exception)

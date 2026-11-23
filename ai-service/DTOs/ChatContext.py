@@ -11,4 +11,5 @@ messageDTOList: A list of Message DTOs that represent the new messages to be add
 class ChatContext(BaseModel):
 
     currentSummary: str | None = None
+    maxCompletionTokens: int | None = None
     messageDTOList: List[Message] = []  # empty on first message
