@@ -174,35 +174,28 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
     public Flux<ServerSentEvent<String>> sendMessageToApiStreaming(ChatRequestDTO chatRequestDTO){
 
         // 1. Prepare the recent context and current request using the existing message preparation flow.
-        PreparedMessages preparedMessages = prepareRecentMessages(chatRequestDTO);
+        PreparedMessages recentMessages = prepareRecentMessages(chatRequestDTO);
 
         // 2. Retrieve semantic history separately so prepareRecentMessages keeps its existing behavior and ordering.
-        PreparedMessages semanticMessages = prepareSemanticContext(preparedMessages);
+        PreparedMessages semanticMessages = prepareSemanticContext(recentMessages);
 
         // 3. Append the already prepared recent context after semantic messages, omitting exact DTO duplicates.
         List<MessageDTO> combinedContext = new ArrayList<>(semanticMessages.context());
-        for (MessageDTO message : preparedMessages.context()) {
+        for (MessageDTO message : recentMessages.context()) {
             if (!combinedContext.contains(message)) {
                 combinedContext.add(message);
             }
         }
 
         // 3.1 Check that the context messages do not surpass the budget available for the call
-        int tokensContext = 0;
-        for(MessageDTO message: combinedContext){
-            tokensContext += message.getTokenCount();
-        }
-
-        if(tokensContext > this.contextBudget.getChatDynamicContextBudget()){
-            throw new ConflictException("The context messages surpass the chat budget");
-        }
+        checkContextWithCapabilities(combinedContext, this.contextBudget.getChatDynamicContextBudget());
 
         // 4. Set the summary and merged context into the Context DTO to send.
-        Conversation conversation = preparedMessages.requestMessage.getConversation();
-        ChatContextDTO chatContextDTO = new ChatContextDTO(conversation.getSummary(), combinedContext);
+        Conversation conversation = recentMessages.requestMessage.getConversation();
+        ChatContextDTO chatContextDTO = new ChatContextDTO(conversation.getSummary(), this.globalContextConfig.getChatTokenBudget(),combinedContext);
 
         // 5. Keep the original request message for persistence after the stream completes.
-        Message messageRequest = preparedMessages.requestMessage;
+        Message messageRequest = recentMessages.requestMessage;
 
         // 6. Send the merged context to the API and receive the Stream/Flux response.
         return Flux.defer(() -> {
@@ -378,6 +371,26 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
     private String generateTitle(String message) {
         return message.length() > 30 ? message.substring(0, 30) + "..." : message;
     }
+
+    /**
+     * Small helper to check the context introduced is valid comparing it to the capabilities of the model used
+     * @param context List of the messages containing the context
+     * @param dynamicContext the maximum context allowed for the request
+     */
+    private void checkContextWithCapabilities(List<MessageDTO> context, int dynamicContext){
+
+        int tokensContext = 0;
+
+        for (int i = 0; i < context.size() - 1; i++) {
+            tokensContext = Math.addExact(tokensContext, context.get(i).getTokenCount());
+        }
+
+        if(tokensContext > dynamicContext){
+            throw new ConflictException("The context messages exceed the available token budget");
+        }
+
+    }
+
 
     /**
      * Processes an SSE event received from the AI service.
@@ -620,8 +633,12 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
                 Collections.reverse(completeContext);
 
                 List <MessageDTO> completeContextDTO = messageMapper.toDtoList(completeContext);
+
+                // Check that the context messages do not surpass the budget available for the call
+                checkContextWithCapabilities(completeContextDTO, this.contextBudget.getSummaryDynamicContextBudget());
+
                 // Build the DTO to send with summary and the list of new messages
-                ChatContextDTO conversationSummary = new ChatContextDTO(conversation.getSummary(), completeContextDTO);
+                ChatContextDTO conversationSummary = new ChatContextDTO(conversation.getSummary(), this.globalContextConfig.getSummaryTokenBudget() ,completeContextDTO);
 
                 logger.info("Summarizing {} new messages. Oldest included ID: {}, previous checkpoint: {}", completeContext.size(), newestMessageIncluded.getId(), conversation.getLastSummarizedMessageId());
 

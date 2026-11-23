@@ -20,6 +20,11 @@ public class ChatContextDTO {
 
     private String currentSummary;
 
+    /**
+     * Max response tokens used by the model
+     */
+    private int maxCompletionTokens;
+
     @NotBlank(message = "Message list cannot be blank")
     private List<MessageDTO> messageDTOList;
 

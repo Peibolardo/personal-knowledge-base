@@ -38,7 +38,7 @@ async def generate_embeddings(
     
     embeddings = await service.generate_embeddings(req)
 
-    logger.info("Successfully generated embeddings for the provided text")
+    logger.info("Successfully generated embeddings for the provided text (Router)")
 
     return embeddings
 

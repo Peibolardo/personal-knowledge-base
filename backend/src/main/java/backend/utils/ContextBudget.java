@@ -16,7 +16,7 @@ import org.springframework.stereotype.Component;
 public class ContextBudget {
 
     private static final Logger logger = LoggerFactory.getLogger(ContextBudget.class);
-    private final ModelCapabilities modelCapabilities;
+    private final ModelCapabilitiesProvider modelCapabilitiesProvider;
     private final GlobalContextConfig globalContextConfig;
 
     /**
@@ -25,8 +25,9 @@ public class ContextBudget {
      * @param modelCapabilitiesProvider provider initialized with the AI service's model and prompt capabilities
      * @param globalContextConfig configured output reserves, safety margin, and per-operation token limits
      */
-    public ContextBudget(ModelCapabilitiesProvider modelCapabilitiesProvider, GlobalContextConfig globalContextConfig) {
-        this.modelCapabilities = modelCapabilitiesProvider.getCapabilities();
+    public ContextBudget(ModelCapabilitiesProvider modelCapabilitiesProvider,
+                         GlobalContextConfig globalContextConfig) {
+        this.modelCapabilitiesProvider = modelCapabilitiesProvider;
         this.globalContextConfig = globalContextConfig;
     }
 
@@ -38,9 +39,9 @@ public class ContextBudget {
      */
     public int getChatDynamicContextBudget(){
 
-        int availableTokens = globalContextConfig.getAvailableChatInputTokens(modelCapabilities);
-        int developerTokens = modelCapabilities.getPrompts().getChat().getDeveloperPromptTokens();
-        int systemTokens = modelCapabilities.getPrompts().getChat().getSystemPromptTokens();
+        int availableTokens = globalContextConfig.getAvailableChatInputTokens(modelCapabilitiesProvider.getCapabilities());
+        int developerTokens = modelCapabilitiesProvider.getCapabilities().getPrompts().getChat().getDeveloperPromptTokens();
+        int systemTokens = modelCapabilitiesProvider.getCapabilities().getPrompts().getChat().getSystemPromptTokens();
 
         logger.info("Retrieving the maximum context for chat to use based on the Configurations and Model capabilities");
 
@@ -56,9 +57,9 @@ public class ContextBudget {
      */
     public int getSummaryDynamicContextBudget(){
 
-        int availableTokens = globalContextConfig.getAvailableSummaryInputTokens(modelCapabilities);
-        int developerTokens = modelCapabilities.getPrompts().getSummarization().getDeveloperPromptTokens();
-        int systemTokens = modelCapabilities.getPrompts().getSummarization().getSystemPromptTokens();
+        int availableTokens = globalContextConfig.getAvailableSummaryInputTokens(modelCapabilitiesProvider.getCapabilities());
+        int developerTokens = modelCapabilitiesProvider.getCapabilities().getPrompts().getSummarization().getDeveloperPromptTokens();
+        int systemTokens = modelCapabilitiesProvider.getCapabilities().getPrompts().getSummarization().getSystemPromptTokens();
 
         logger.info("Retrieving the maximum context for summarization to use based on the Configurations and Model capabilities");
 

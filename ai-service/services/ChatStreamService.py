@@ -109,7 +109,7 @@ class ChatStreamingService:
         # DEBUG: Inspect the messages sent to OpenAI self.logger.info( "Messages sent to OpenAI:\n%s",  json.dumps(messages, indent=2, ensure_ascii=False) )
 
         # 5. Open the streaming request
-        stream = await self.open_stream_with_retries(messages)
+        stream = await self.open_stream_with_retries(messages, context.maxCompletionTokens)
 
         return stream, tokens_input_message, start_time
         
@@ -310,7 +310,7 @@ class ChatStreamingService:
     Throw exceptions depending on the error returned by the AI API
     Retryable errors have a maximum of three attemps before stopping the flow
     '''
-    async def open_stream_with_retries(self, content):
+    async def open_stream_with_retries(self, content, max_completion_tokens):
 
         #Set up maximum attempts to retryable routine
         max_attempts = 3
@@ -324,6 +324,7 @@ class ChatStreamingService:
                 stream = await self.client.chat.completions.create(
                             model = self.model,
                             messages = content,
+                            max_completion_tokens = max_completion_tokens,
                             temperature = self.config.temperature,
                             top_p = self.config.top_p,
                             stream = True,

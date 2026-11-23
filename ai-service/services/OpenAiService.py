@@ -219,7 +219,7 @@ class OpenAiService:
                 response = self.client.chat.completions.create(
                             model = self.model,
                             messages = messages,
-                            max_completion_tokens = 1500
+                            max_completion_tokens = chatContext.maxCompletionTokens
                         )
 
                 # Get the updated summary from the response
