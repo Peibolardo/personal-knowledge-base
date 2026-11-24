@@ -8,8 +8,10 @@ import backend.exception.customExceptions.ExternalServiceOperationException;
 import backend.exception.customExceptions.InvalidRequestException;
 import backend.exception.customExceptions.ResourceNotFoundException;
 import backend.mapper.EmbeddingChunkMapper;
+import backend.model.Conversation;
 import backend.model.Message;
 import backend.model.MessageChunk;
+import backend.provider.EmbeddingCapabilitiesProvider;
 import backend.repository.ConversationRepository;
 import backend.repository.MessageChunkRepository;
 import backend.repository.MessageRepository;
@@ -40,19 +42,21 @@ public class EmbeddingCommandServiceImpl implements EmbeddingCommandService {
     private final ConversationRepository conversationRepository;
     private final ExternalAiService externalAiService;
     private final EmbeddingChunkMapper embeddingChunkMapper;
+    private final EmbeddingCapabilitiesProvider embeddingCapabilitiesProvider;
 
     public EmbeddingCommandServiceImpl(
             MessageChunkRepository messageChunkRepository,
             MessageRepository messageRepository,
             ConversationRepository conversationRepository,
             ExternalAiService externalAiService,
-            EmbeddingChunkMapper embeddingChunkMapper
+            EmbeddingChunkMapper embeddingChunkMapper, EmbeddingCapabilitiesProvider embeddingCapabilitiesProvider
     ) {
         this.messageChunkRepository = messageChunkRepository;
         this.messageRepository = messageRepository;
         this.conversationRepository = conversationRepository;
         this.externalAiService = externalAiService;
         this.embeddingChunkMapper = embeddingChunkMapper;
+        this.embeddingCapabilitiesProvider = embeddingCapabilitiesProvider;
     }
 
     /**
@@ -261,6 +265,34 @@ public class EmbeddingCommandServiceImpl implements EmbeddingCommandService {
         return messageChunkRepository.getTurnIdsByConversationAndSimilarity(
                 conversationId, embeddingModel, queryVector, maxDistance, batchSize, offset
         );
+    }
+
+    @Transactional
+    public void migrateConversationEmbeddings(String conversationId){
+
+        // 1. Retrieve all the messages for a conversation
+        List<Message> messageList = messageRepository.getConversationMessages(conversationId);
+
+        // 2. Create a List to store all chunks to save
+        List<MessageChunk> chunksToPersist = new ArrayList<>();
+
+        // 3. Embed with the new model the messages
+        for(Message message: messageList){
+            chunksToPersist.addAll(embedMessage(message));
+        }
+
+
+
+        messageChunkRepository.saveAll(chunksToPersist);
+
+
+        Conversation conversation = conversationRepository.findById(conversationId)
+                .orElseThrow(() -> new ResourceNotFoundException("There is no Conversation with this ID"));
+
+        conversation.setEmbeddingModel(embeddingCapabilitiesProvider.getEmbeddingCapabilities().getModel());
+
+        conversationRepository.save(conversation);
+
     }
 
     /**

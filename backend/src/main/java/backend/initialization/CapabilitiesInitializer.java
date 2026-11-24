@@ -47,7 +47,7 @@ public class CapabilitiesInitializer implements ApplicationRunner {
 
        EmbeddingCapabilities embeddingCapabilities = externalAiService.getEmbeddingCapabilities();
 
-       if(embeddingCapabilities.getModel() == null || embeddingCapabilities.getDimensions() == 0){
+       if(embeddingCapabilities.getModel() == null || embeddingCapabilities.getModel().isBlank() ||  embeddingCapabilities.getDimensions() <= 0){
            throw new ConflictException("Could not retrieve embeddings capabilities correctly");
        }
 

@@ -14,6 +14,7 @@ import backend.mapper.MessageChatResponseMapper;
 import backend.mapper.MessageMapper;
 import backend.model.Conversation;
 import backend.model.Message;
+import backend.provider.EmbeddingCapabilitiesProvider;
 import backend.repository.ConversationRepository;
 import backend.repository.MessageRepository;
 import backend.service.interfaces.EmbeddingCommandService;
@@ -69,6 +70,7 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
     private final TaskExecutor embeddingTaskExecutor;
     private final GlobalContextConfig globalContextConfig;
     private final ContextBudget contextBudget;
+    private final EmbeddingCapabilitiesProvider embeddingCapabilitiesProvider;
 
     public OpenAICommandServiceImpl(MessageRepository messageRepository,
                                     ConversationRepository conversationRepository,
@@ -82,7 +84,7 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
                                     @Qualifier("summaryTaskExecutor") TaskExecutor summaryTaskExecutor,
                                     @Qualifier("embeddingTaskExecutor")TaskExecutor embeddingTaskExecutor,
                                     GlobalContextConfig globalContextConfig,
-                                    ContextBudget contextBudget
+                                    ContextBudget contextBudget, EmbeddingCapabilitiesProvider embeddingCapabilitiesProvider
     ) {
 
         this.messageRepository = messageRepository;
@@ -99,6 +101,7 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
         this.embeddingTaskExecutor = embeddingTaskExecutor;
         this.globalContextConfig = globalContextConfig;
         this.contextBudget = contextBudget;
+        this.embeddingCapabilitiesProvider = embeddingCapabilitiesProvider;
     }
 
     /**
@@ -697,28 +700,6 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
     }
 
     /**
-     * Schedules embedding generation for the persisted user request and assistant response.
-     * Runs the embedding work on the dedicated executor so it does not block the chat response flow.
-     * Failures are logged without changing the already completed chat response.
-     *
-     * @param requestId ID of the persisted user message
-     * @param responseId ID of the persisted assistant response
-     */
-    private void triggerEmbedding(String requestId, String responseId) {
-        try {
-            embeddingTaskExecutor.execute(() -> {
-                try {
-                    embeddingCommandService.embedRequestResponseMessages(requestId, responseId);
-                } catch (Exception e) {
-                    logger.error("Embedding generation failed for request {} and response {}", requestId, responseId, e);
-                }
-            });
-        } catch (TaskRejectedException e) {
-            logger.error("Could not schedule embedding generation for request {} and response {}", requestId, responseId, e);
-        }
-    }
-
-    /**
      * Builds chronological semantic history using only the token budget left after recent context is selected.
      * Embeds the current request once, pages through unique turn candidates, and tracks the unspent budget.
      *
@@ -746,7 +727,17 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
 
         }
 
-        // 1.2 Apply the semantic threshold only to the budget remaining after recent context was prepared.
+        // 1.2 Check if the conversation embedding model is the same as the configuration one, if not start the embedding model migration
+        if (!embeddingModel.equals(embeddingCapabilitiesProvider.getEmbeddingCapabilities().getModel())){
+
+            logger.info("Skipping semantic retrieval for conversation {} because its embedding model is not the same to the embedding configuration", conversationId);
+
+            return new PreparedMessages(requestMessage, new ArrayList<>(), preparedMessages.remainingTokens());
+
+        }
+
+
+        // 1.3 Apply the semantic threshold only to the budget remaining after recent context was prepared.
         int semanticTokenLimit = Math.min(
                 preparedMessages.remainingTokens(), globalContextConfig.getSemanticTokenBudget()
         );
@@ -841,6 +832,31 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
         return new PreparedMessages(requestMessage, context, preparedMessages.remainingTokens() - tokenCount);
 
     }
+
+    /**
+     * Schedules embedding generation for the persisted user request and assistant response.
+     * Runs the embedding work on the dedicated executor so it does not block the chat response flow.
+     * Failures are logged without changing the already completed chat response.
+     *
+     * @param requestId ID of the persisted user message
+     * @param responseId ID of the persisted assistant response
+     */
+    private void triggerEmbedding(String requestId, String responseId) {
+        try {
+            embeddingTaskExecutor.execute(() -> {
+                try {
+                    embeddingCommandService.embedRequestResponseMessages(requestId, responseId);
+                } catch (Exception e) {
+                    logger.error("Embedding generation failed for request {} and response {}", requestId, responseId, e);
+                }
+            });
+        } catch (TaskRejectedException e) {
+            logger.error("Could not schedule embedding generation for request {} and response {}", requestId, responseId, e);
+        }
+    }
+
+
+
 
     /**
      * Confirms that a retrieved turn contains both the user request and assistant response.
