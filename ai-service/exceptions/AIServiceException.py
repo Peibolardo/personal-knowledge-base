@@ -32,3 +32,10 @@ class AIConnectionException(AIServiceException):
 class AITimeoutException(AIServiceException):
     def __init__(self, message):
             super().__init__(message, status.HTTP_504_GATEWAY_TIMEOUT)
+
+class AIServiceUnavailableException(AIServiceException):
+    def __init__(self, message: str):
+        super().__init__(
+            message,
+            status.HTTP_503_SERVICE_UNAVAILABLE
+        )

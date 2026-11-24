@@ -3,7 +3,8 @@ import logging
 from openai import (
     AsyncOpenAI,
 )
-from services.TokenizerService import TokenizerService
+from infraestructure.TokenizerService import TokenizerService
+from infraestructure.OpenAIRetryService import OpenAIRetryService
 from DTOs.EmbeddingRequest import EmbeddingRequest
 from DTOs.EmbeddingResponse import EmbeddingResponse
 from DTOs.QueryEmbeddingResponse import QueryEmbeddingResponse
@@ -18,6 +19,9 @@ class EmbeddingService:
 
         #TokenizerService with the model established in the env file
         self.tokenizer = TokenizerService(self.model)
+
+        #Service to exeecute the OpenAI API calls with retry logic
+        self.retry_service = OpenAIRetryService()
 
         self.chunk_size = 300
         self.overlap = 30
@@ -48,12 +52,19 @@ class EmbeddingService:
 
         chunk_contents = [chunk["content"] for chunk in tokenized_chunks]
 
-        response = await self.client.embeddings.create(
+        embedding_operation = lambda: self.client.embeddings.create(
             model=self.model,
             input=chunk_contents
         )
 
+        response = await self.retry_service.execute(embedding_operation)
+
         embeddings_by_index = sorted(response.data, key=lambda item: item.index)
+
+        # Check that the embeddings returned by the API match the expected dimensions and order //TODO remove hardcoded dimension check and make it dynamic based on the model used
+        for embedding_data in embeddings_by_index:
+            if len(embedding_data.embedding) != 1536:
+                raise ValueError("Unexpected embedding dimensions")
 
         expected_indices = list(range(len(tokenized_chunks)))
         actual_indices = [embedding_data.index for embedding_data in embeddings_by_index]
@@ -91,10 +102,12 @@ class EmbeddingService:
 
         self.logger.info("Generating an embedding for the complete user query")
 
-        response = await self.client.embeddings.create(
+        query_embedding_operation = lambda: self.client.embeddings.create(
             model=self.model,
             input=query
         )
+
+        response = await self.retry_service.execute(query_embedding_operation)
 
         if len(response.data) != 1 or response.data[0].index != 0:
             self.logger.error("Embedding API returned an unexpected result for the query")
