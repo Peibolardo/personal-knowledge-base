@@ -12,7 +12,7 @@ from DTOs.QueryEmbeddingResponse import QueryEmbeddingResponse
 class EmbeddingService:
     
     def __init__(self):
-        self.client = AsyncOpenAI()
+        self.client = AsyncOpenAI(max_retries=0)
         self.logger = logging.getLogger("uvicorn.error")
         self.model = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
 

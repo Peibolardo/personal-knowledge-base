@@ -4,8 +4,6 @@ import time
 import logging
 from openai import (
     AsyncOpenAI,
-    RateLimitError,
-    AuthenticationError,
     APIConnectionError,
     APITimeoutError,
     APIError
@@ -13,20 +11,14 @@ from openai import (
 from config.OpenAIConfig import OpenAIConfig
 from DTOs.ChatContext import ChatContext
 from collections.abc import AsyncIterator
-from services.TokenizerService import TokenizerService
-from services.SerializeService import SerializeService
+from infraestructure.TokenizerService import TokenizerService
+from infraestructure.SerializeService import SerializeService
+from infraestructure.OpenAIRetryService import OpenAIRetryService
 from DTOs.streaming.ChatStreamEventType import ChatStreamEventType
 from DTOs.streaming.ChatStreamContent import ChatStreamContent
 from DTOs.streaming.ChatStreamMetadata import ChatStreamMetadata
 from DTOs.streaming.ChatStreamDone import ChatStreamDone
 from DTOs.streaming.ChatStreamError import ChatStreamError
-from exceptions.AIServiceException import (
-            AIRateLimitException,
-            AIAuthenticationException,
-            AIConnectionException,
-            AITimeoutException,
-            AIServiceException
-        )
 from pathlib import Path
 
 class ChatStreamingService:
@@ -55,6 +47,8 @@ class ChatStreamingService:
 
         #SerializerService
         self.serializer = SerializeService()
+
+        self.retry_service = OpenAIRetryService()
 
     """
     Function receives a ChatContext with the context and send it to the OpenAI API
@@ -312,66 +306,20 @@ class ChatStreamingService:
     '''
     async def open_stream_with_retries(self, content, max_completion_tokens):
 
-        #Set up maximum attempts to retryable routine
-        max_attempts = 3
+        stream_operation = lambda: self.client.chat.completions.create(
+                    model = self.model,
+                    messages = content,
+                    max_completion_tokens = max_completion_tokens,
+                    temperature = self.config.temperature,
+                    top_p = self.config.top_p,
+                    stream = True,
+                    stream_options={
+                        "include_usage": True
+                        },
+                )
 
-        #Set up seconds to sleep in case of retry routine
-        delay = 1
-        for attempt in range(1, max_attempts + 1):
+        stream = await self.retry_service.execute(stream_operation)
 
-            # Request to the model API
-            try:
-                stream = await self.client.chat.completions.create(
-                            model = self.model,
-                            messages = content,
-                            max_completion_tokens = max_completion_tokens,
-                            temperature = self.config.temperature,
-                            top_p = self.config.top_p,
-                            stream = True,
-                            stream_options={
-                                "include_usage": True
-                                },
-                        )
+        return stream
 
-                return stream
-
-            # Exceptions in case of error
-            except RateLimitError as e:
-                self.logger.warning("Too many messages sent")
-                if attempt == max_attempts:
-                    raise AIRateLimitException(
-                        "AI service rate limit exceeded"
-                    ) from e
-
-            except APITimeoutError as e:
-                self.logger.warning("Too long for the API to give an answer")
-                if attempt == max_attempts:
-                    raise AITimeoutException(
-                        "AI service request timed out"
-                    ) from e
-
-            except APIConnectionError as e:
-                self.logger.warning("Could not connect to the API")
-                if attempt == max_attempts:
-                    raise AIConnectionException(
-                        "Could not connect to AI service"
-                    ) from e
-                
-            except AuthenticationError as e:
-                self.logger.exception("Could not authenticate the user")
-                raise AIAuthenticationException(
-                    "AI service authentication failed"
-                ) from e
-            
-            except APIError as e:
-                self.logger.exception("Error with the API")
-                raise AIServiceException(
-                    "Unexpected AI service error",
-                ) from e
-
-            except Exception:
-                self.logger.exception("Unexpected error...")
-                raise
-
-            await asyncio.sleep(delay)
-            delay += delay
+    
