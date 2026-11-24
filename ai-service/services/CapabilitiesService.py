@@ -7,7 +7,7 @@ from capabilities.PromptCapabilities import PromptCapabilities
 from capabilities.registry.ModelCapabilitiesRegistry import ModelCapabilitiesRegistry
 from config.OpenAIConfig import OpenAIConfig
 from exceptions.AIServiceException import AIServiceException
-from services.TokenizerService import TokenizerService
+from infraestructure.TokenizerService import TokenizerService
 
 
 '''

@@ -8,6 +8,9 @@ from infraestructure.OpenAIRetryService import OpenAIRetryService
 from DTOs.EmbeddingRequest import EmbeddingRequest
 from DTOs.EmbeddingResponse import EmbeddingResponse
 from DTOs.QueryEmbeddingResponse import QueryEmbeddingResponse
+from config.EmbeddingsConfig import EmbeddingsConfig
+from capabilities.registry.EmbeddingCapabilitiesRegistry import EmbeddingCapabilitiesRegistry
+from exceptions.AIServiceException import AIServiceException
 
 
 class EmbeddingService:
@@ -15,7 +18,6 @@ class EmbeddingService:
     def __init__(self):
         self.client = AsyncOpenAI(max_retries=0)
         self.logger = logging.getLogger("uvicorn.error")
-        self.model = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
 
         #TokenizerService with the model established in the env file
         self.tokenizer = TokenizerService(self.model)
@@ -23,8 +25,29 @@ class EmbeddingService:
         #Service to exeecute the OpenAI API calls with retry logic
         self.retry_service = OpenAIRetryService()
 
-        self.chunk_size = 300
-        self.overlap = 30
+        #EmbeddingsConfig to retrieve the model, chunk size, and overlap values from the environment
+        self.embeddings_config = EmbeddingsConfig()
+
+        #EmbeddingCapabilitiesRegistry to retrieve the embedding model's capabilities, including dimensions
+        self.registry = EmbeddingCapabilitiesRegistry()
+
+        try:
+            self.model_limits = self.registry.get_embedding_capabilities(self.model)
+        except ValueError as error:
+            raise AIServiceException(str(error)) from error
+
+        # Set the embedding model from the embeddings configuration, raising an exception if it cannot be retrieved
+        try:    
+            self.model = self.embeddings_config.model
+        except ValueError as error:
+            raise AIServiceException("Cannot retrieve the embedding model from the environment configuration") from error
+
+        # Set the chunk size and overlap values from the embeddings configuration
+        self.chunk_size = self.embeddings_config.chunk_size
+        self.overlap = self.embeddings_config.overlap
+
+        # Set the embedding dimensions from the model limits retrieved from the registry
+        self.dimensions = self.model_limits["dimensions"]
 
 
     '''
@@ -61,9 +84,9 @@ class EmbeddingService:
 
         embeddings_by_index = sorted(response.data, key=lambda item: item.index)
 
-        # Check that the embeddings returned by the API match the expected dimensions and order //TODO remove hardcoded dimension check and make it dynamic based on the model used
+        # Check that the embeddings returned by the API match the expected dimensions and order 
         for embedding_data in embeddings_by_index:
-            if len(embedding_data.embedding) != 1536:
+            if len(embedding_data.embedding) != self.dimensions:
                 raise ValueError("Unexpected embedding dimensions")
 
         expected_indices = list(range(len(tokenized_chunks)))

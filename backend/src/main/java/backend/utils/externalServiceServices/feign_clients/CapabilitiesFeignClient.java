@@ -14,7 +14,7 @@ public interface CapabilitiesFeignClient {
      *
      * @return the model and prompt capabilities reported by the AI service
      */
-    @GetMapping(PREFIX)
+    @GetMapping(PREFIX + "/chat")
     ModelCapabilities getCapabilities();
 
 }

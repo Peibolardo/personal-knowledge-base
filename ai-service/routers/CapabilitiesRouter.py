@@ -27,7 +27,7 @@ Purpose: Return the configured model limits and static prompt token counts for c
 service: Cached CapabilitiesService dependency used to retrieve the precomputed capability DTO.
 Returns: ModelCapabilities serialized with the JSON field names expected by the Spring backend.
 '''
-@router.get("", response_model=ModelCapabilities, response_model_by_alias=True)
+@router.get("/chat", response_model=ModelCapabilities, response_model_by_alias=True)
 async def get_capabilities(
     service: CapabilitiesService = Depends(get_capabilities_service)
 ) -> ModelCapabilities:
@@ -38,3 +38,6 @@ async def get_capabilities(
     logger.info("Successfully returned AI model capabilities for model %s", capabilities.model)
 
     return capabilities
+
+
+@router.get("/embeddings", response_model=ModelCapabilities, response_model_by_alias=True)
