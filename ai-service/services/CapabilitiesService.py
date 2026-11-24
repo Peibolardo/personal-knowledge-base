@@ -1,10 +1,10 @@
 import logging
 from pathlib import Path
 
-from capabilities.ModelCapabilities import ModelCapabilities
+from capabilities.ChatModelCapabilities import ChatModelCapabilities
 from capabilities.OperationPromptCapabilities import OperationPromptCapabilities
 from capabilities.PromptCapabilities import PromptCapabilities
-from capabilities.registry.ModelCapabilitiesRegistry import ModelCapabilitiesRegistry
+from capabilities.registry.ChatModelCapabilitiesRegistry import ChatModelCapabilitiesRegistry
 from capabilities.EmbeddingsCapabilities import EmbeddingsCapabilities
 from capabilities.registry.EmbeddingCapabilitiesRegistry import EmbeddingCapabilitiesRegistry
 from config.EmbeddingsConfig import EmbeddingsConfig
@@ -33,7 +33,7 @@ class CapabilitiesService:
 
     
         self.config = OpenAIConfig()
-        self.model_capabilities_registry =  ModelCapabilitiesRegistry()
+        self.model_capabilities_registry = ChatModelCapabilitiesRegistry()
 
         self.embedding_capabilities_registry = EmbeddingCapabilitiesRegistry()
         self.embeddings_config = EmbeddingsConfig()
@@ -61,9 +61,9 @@ class CapabilitiesService:
     '''
     Returns the configured model name, its registered context and completion limits, and cached prompt counts.
     '''
-    def get_capabilities(self) -> ModelCapabilities:
+    def get_capabilities(self) -> ChatModelCapabilities:
 
-        return ModelCapabilities(
+        return ChatModelCapabilities(
             model=self.config.model,
             context_window_tokens=self.model_limits["context_window_tokens"],
             model_max_completion_tokens=self.model_limits["max_completion_tokens"],

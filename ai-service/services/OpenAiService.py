@@ -3,13 +3,13 @@ import time
 import logging
 import json
 from openai import AsyncOpenAI
-from DTOs.ChatResponse import ChatResponse
+from DTOs.chat.ChatResponse import ChatResponse
 from DTOs.Message import Message
 from exceptions.AIServiceException import AIServiceException
 from typing import List
 from infraestructure.TokenizerService import TokenizerService
 from infraestructure.OpenAIRetryService import OpenAIRetryService
-from DTOs.ChatContext import ChatContext
+from DTOs.chat.ChatContext import ChatContext
 from pathlib import Path
 from config.OpenAIConfig import OpenAIConfig
 

@@ -5,9 +5,9 @@ from openai import (
 )
 from infraestructure.TokenizerService import TokenizerService
 from infraestructure.OpenAIRetryService import OpenAIRetryService
-from DTOs.EmbeddingRequest import EmbeddingRequest
-from DTOs.EmbeddingResponse import EmbeddingResponse
-from DTOs.QueryEmbeddingResponse import QueryEmbeddingResponse
+from DTOs.embeddings.EmbeddingRequest import EmbeddingRequest
+from DTOs.embeddings.EmbeddingResponse import EmbeddingResponse
+from DTOs.embeddings.QueryEmbeddingResponse import QueryEmbeddingResponse
 from config.EmbeddingsConfig import EmbeddingsConfig
 from capabilities.registry.EmbeddingCapabilitiesRegistry import EmbeddingCapabilitiesRegistry
 from exceptions.AIServiceException import AIServiceException
@@ -19,14 +19,14 @@ class EmbeddingService:
         self.client = AsyncOpenAI(max_retries=0)
         self.logger = logging.getLogger("uvicorn.error")
 
-        #TokenizerService with the model established in the env file
-        self.tokenizer = TokenizerService(self.model)
-
-        #Service to exeecute the OpenAI API calls with retry logic
-        self.retry_service = OpenAIRetryService()
-
         #EmbeddingsConfig to retrieve the model, chunk size, and overlap values from the environment
         self.embeddings_config = EmbeddingsConfig()
+
+        # Set the embedding model before initializing components that depend on it
+        try:
+            self.model = self.embeddings_config.model
+        except ValueError as error:
+            raise AIServiceException("Cannot retrieve the embedding model from the environment configuration") from error
 
         #EmbeddingCapabilitiesRegistry to retrieve the embedding model's capabilities, including dimensions
         self.registry = EmbeddingCapabilitiesRegistry()
@@ -36,11 +36,11 @@ class EmbeddingService:
         except ValueError as error:
             raise AIServiceException(str(error)) from error
 
-        # Set the embedding model from the embeddings configuration, raising an exception if it cannot be retrieved
-        try:    
-            self.model = self.embeddings_config.model
-        except ValueError as error:
-            raise AIServiceException("Cannot retrieve the embedding model from the environment configuration") from error
+        #TokenizerService with the model established in the env file
+        self.tokenizer = TokenizerService(self.model)
+
+        #Service to execute the OpenAI API calls with retry logic
+        self.retry_service = OpenAIRetryService()
 
         # Set the chunk size and overlap values from the embeddings configuration
         self.chunk_size = self.embeddings_config.chunk_size

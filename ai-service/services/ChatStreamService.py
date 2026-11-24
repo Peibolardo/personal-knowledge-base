@@ -1,4 +1,3 @@
-from multiprocessing import context
 import asyncio
 import time
 import logging
@@ -9,7 +8,7 @@ from openai import (
     APIError
 )
 from config.OpenAIConfig import OpenAIConfig
-from DTOs.ChatContext import ChatContext
+from DTOs.chat.ChatContext import ChatContext
 from collections.abc import AsyncIterator
 from infraestructure.TokenizerService import TokenizerService
 from infraestructure.SerializeService import SerializeService
@@ -321,5 +320,3 @@ class ChatStreamingService:
         stream = await self.retry_service.execute(stream_operation)
 
         return stream
-
-    

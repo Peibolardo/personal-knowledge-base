@@ -6,7 +6,7 @@ from capabilities.PromptCapabilities import PromptCapabilities
 Model capabilities DTO.
 Stores the context and completion token limits of the configured AI model, along with prompt token counts.
 """
-class ModelCapabilities(BaseModel):
+class ChatModelCapabilities(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 

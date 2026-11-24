@@ -1,5 +1,4 @@
-from openai import BaseModel
-from pydantic import ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 """
 Embeddings capabilities DTO.

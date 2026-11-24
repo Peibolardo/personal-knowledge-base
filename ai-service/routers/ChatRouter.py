@@ -3,10 +3,10 @@ from fastapi.responses import StreamingResponse
 from services.OpenAiService import OpenAiService
 from services.ChatStreamService import ChatStreamingService
 from DTOs.Message import Message
-from DTOs.ChatResponse import ChatResponse
+from DTOs.chat.ChatResponse import ChatResponse
 from typing import List
 from functools import lru_cache
-from DTOs.ChatContext import ChatContext
+from DTOs.chat.ChatContext import ChatContext
 
 import logging
 
