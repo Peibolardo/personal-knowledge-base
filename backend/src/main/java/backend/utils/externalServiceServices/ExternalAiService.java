@@ -113,8 +113,18 @@ public class ExternalAiService {
                     .onStatus(HttpStatusCode::isError, resp ->
                             resp.bodyToMono(String.class)
                                     .defaultIfEmpty("")
-                                    .map(body -> new ExternalServiceOperationException(
-                                            "AI service error " + resp.statusCode().value() + ": " + body)))
+                                    .map(body -> {
+                                        int status = resp.statusCode().value();
+
+                                        String message = "AI service error " + status + ": " + body;
+
+                                        if (status == 502 || status == 503 || status == 504) {
+                                            return new UnreachableExternalServiceException(message);
+                                        }
+
+                                        return new ExternalServiceOperationException(message);
+                                    })
+                    )
                     .bodyToFlux(
                             new ParameterizedTypeReference<ServerSentEvent<String>>() {
                             }

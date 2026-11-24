@@ -3,7 +3,7 @@ import time
 import logging
 import json
 from openai import (
-    OpenAI,
+    AsyncOpenAI,
     RateLimitError,
     AuthenticationError,
     APIConnectionError,
@@ -43,7 +43,7 @@ class OpenAiService:
 
     #Constructor to initialize the class
     def __init__(self):
-        self.client = OpenAI()
+        self.client = AsyncOpenAI(max_retries=0)
         self.logger = logging.getLogger("uvicorn.error")
         self.model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
         self.system_prompt = os.getenv("SYSTEM_PROMPT")
@@ -63,7 +63,7 @@ class OpenAiService:
 
     Throws different Exceptions based on the  issue, depending on the cause of it, they can be retryable to a max of three attemps before interrupting the flow.
     """
-    def send_message_to_api(self, context: List[Message]) -> ChatResponse:
+    async def send_message_to_api(self, context: List[Message]) -> ChatResponse:
 
         #Set up maximum attempts to retryable routine
         max_attempts = 3
@@ -71,105 +71,68 @@ class OpenAiService:
         delay = 1
 
         for attempt in range(1, max_attempts + 1):
-            try:
-                self.logger.info("Attempting to send a message to the AI")
-                self.logger.info("AI API request started | model=%s | messages=%d", self.model, len(context))
-
-                start_time = time.perf_counter()
-
-                messages = []
-
-                #Check if the system prompt is null
-                if not self.system_prompt:
-                    raise ValueError("SYSTEM_PROMPT environment variable is not configured")
-
-                messages.append({
-                    "role": "system",
-                    "content": self.system_prompt
-                })
-
-                for msg in context:
-                    messages.append({
-                        "role": msg.role.value,
-                        "content": msg.content
-                    })
-                self.logger.info("SYSTEM PROMPT: %s", self.system_prompt)
-                response = self.client.chat.completions.create(
-                            model = self.model,
-                            messages = messages
-                        )
-
-                ## Tokens used by the request message
-                tokens_input_message = self.tokenizer.count_tokens(context[-1].content)
-
-                duration_ms = (time.perf_counter() - start_time) * 1000
-
-                self.logger.info(
-                    "OpenAI request completed | model=%s | messages=%d | "
-                    "prompt_tokens=%d | completion_tokens=%d | total_tokens=%d | "
-                    "duration_ms=%d",
-                    response.model,
-                    len(context),
-                    response.usage.prompt_tokens,
-                    response.usage.completion_tokens,
-                    response.usage.total_tokens,
-                    duration_ms
-                )
-
-                return ChatResponse(
-                    content=response.choices[0].message.content,
-                    tokens_prompt=response.usage.prompt_tokens,
-                    tokens_completion=response.usage.completion_tokens,
-                    tokens_total=response.usage.total_tokens,
-                    tokens_input_message = tokens_input_message,
-                    model_used=response.model
-                )
-
-            except RateLimitError as e:
-                self.logger.exception("Too many messages sent")
-                if attempt == max_attempts:
-                    raise AIRateLimitException(
-                        "AI service rate limit exceeded"
-                    ) from e
-
-            except APIConnectionError as e:
-                self.logger.exception("Could not connect to the API")
-                if attempt == max_attempts:
-                    raise AIConnectionException(
-                        "Could not connect to AI service"
-                    ) from e
-
-            except APITimeoutError as e:
-                self.logger.exception("Too long for the API to give an answer")
-                if attempt == max_attempts:
-                    raise AITimeoutException(
-                        "AI service request timed out"
-                    ) from e
-
                 
-            except AuthenticationError as e:
-                self.logger.exception("Could not authenticate the user")
-                raise AIAuthenticationException(
-                    "AI service authentication failed"
-                ) from e
+            self.logger.info("Attempting to send a message to the AI")
+            self.logger.info("AI API request started | model=%s | messages=%d", self.model, len(context))
+
+            start_time = time.perf_counter()
+
+            messages = []
+
+            #Check if the system prompt is null
+            if not self.system_prompt:
+                raise ValueError("SYSTEM_PROMPT environment variable is not configured")
+
+            messages.append({
+                "role": "system",
+                "content": self.system_prompt
+            })
+
+            for msg in context:
+                messages.append({
+                    "role": msg.role.value,
+                    "content": msg.content
+                })
+            self.logger.info("SYSTEM PROMPT: %s", self.system_prompt)
             
-            except APIError as e:
-                self.logger.exception("Error with the API")
-                raise AIServiceException(
-                    "Unexpected AI service error",
-                ) from e
+            message_sending_operation = lambda: self.client.chat.completions.create(
+                        model = self.model,
+                        messages = messages
+                    )
+            
+            response = await self.retry_service.execute(message_sending_operation)
 
-            except Exception:
-                self.logger.exception("Unexpected error...")
-                raise
+            ## Tokens used by the request message
+            tokens_input_message = self.tokenizer.count_tokens(context[-1].content)
 
-            time.sleep(delay)
-            delay += delay
+            duration_ms = (time.perf_counter() - start_time) * 1000
+
+            self.logger.info(
+                "OpenAI request completed | model=%s | messages=%d | "
+                "prompt_tokens=%d | completion_tokens=%d | total_tokens=%d | "
+                "duration_ms=%d",
+                response.model,
+                len(context),
+                response.usage.prompt_tokens,
+                response.usage.completion_tokens,
+                response.usage.total_tokens,
+                duration_ms
+            )
+
+            return ChatResponse(
+                content=response.choices[0].message.content,
+                tokens_prompt=response.usage.prompt_tokens,
+                tokens_completion=response.usage.completion_tokens,
+                tokens_total=response.usage.total_tokens,
+                tokens_input_message = tokens_input_message,
+                model_used=response.model
+            )
+
 
     """
     Function that receives a ChatContext DTO with the current summary of the conversation and the new messages to
     """
-    def summarize_conversation(self, chatContext: ChatContext) -> str:
+    async def summarize_conversation(self, chatContext: ChatContext) -> str:
 
         #Set up maximum attempts to retryable routine
         max_attempts = 3
@@ -224,7 +187,7 @@ class OpenAiService:
                         max_completion_tokens = chatContext.maxCompletionTokens
                     )
             
-            response = self.retry_service.execute(summarization_operation)
+            response = await self.retry_service.execute(summarization_operation)
 
             # Get the updated summary from the response
             updated_summary = response.choices[0].message.content

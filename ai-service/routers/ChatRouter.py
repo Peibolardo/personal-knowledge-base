@@ -44,7 +44,7 @@ async def send_message_to_api(
     
     logger.info("Received the request to POST a message to the AI")
     
-    response = service.send_message_to_api(context)
+    response = await service.send_message_to_api(context)
 
     logger.info("Successfully received the response from the AI API")
 
@@ -97,7 +97,7 @@ async def summarize_conversation(
     
     logger.info("Received the request to summarize the conversation")
 
-    response = service.summarize_conversation(chatContext)
+    response = await service.summarize_conversation(chatContext)
 
     logger.info("Successfully received the summarized response from the AI API")
 

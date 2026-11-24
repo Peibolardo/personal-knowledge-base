@@ -18,6 +18,8 @@ public class EmbedAsyncConfig {
      * Maximum pool size: 4 threads when the pool needs to expand.
      * Queue capacity: 50 tasks waiting for an available worker.
      * Thread name prefix: "embedding-" to identify worker threads in logs.
+     * Shutdown behavior: allow queued and running embedding tasks to complete when the application shuts down.
+     * Termination wait: wait up to 30 seconds for the executor to finish before continuing shutdown.
      *
      * @return the configured ThreadPoolTaskExecutor bean
      */
@@ -30,6 +32,9 @@ public class EmbedAsyncConfig {
         executor.setMaxPoolSize(4);
         executor.setQueueCapacity(50);
         executor.setThreadNamePrefix("embedding-");
+
+        executor.setWaitForTasksToCompleteOnShutdown(true);
+        executor.setAwaitTerminationSeconds(30);
 
         return executor;
     }

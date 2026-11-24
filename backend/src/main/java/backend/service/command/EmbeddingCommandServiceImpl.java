@@ -15,6 +15,7 @@ import backend.repository.MessageChunkRepository;
 import backend.repository.MessageRepository;
 import backend.service.interfaces.EmbeddingCommandService;
 import backend.utils.externalServiceServices.ExternalAiService;
+import jakarta.transaction.Transactional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -63,6 +64,7 @@ public class EmbeddingCommandServiceImpl implements EmbeddingCommandService {
      * @throws InvalidRequestException if the IDs do not identify the user and assistant messages from the same turn
      * @throws ResourceNotFoundException if either message cannot be found
      */
+    @Transactional
     public void embedRequestResponseMessages(String requestId, String responseId) {
 
         // 1. Confirm both message IDs are valid UUIDs and refer to different messages.
