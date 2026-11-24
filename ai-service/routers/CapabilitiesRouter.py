@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends
 from services.CapabilitiesService import CapabilitiesService
 from capabilities.ModelCapabilities import ModelCapabilities
+from capabilities.EmbeddingsCapabilities import EmbeddingsCapabilities
 from functools import lru_cache
 import logging
 
@@ -40,4 +41,15 @@ async def get_capabilities(
     return capabilities
 
 
-@router.get("/embeddings", response_model=ModelCapabilities, response_model_by_alias=True)
+@router.get("/embeddings", response_model=EmbeddingsCapabilities, response_model_by_alias=True)
+async def get_embedding_capabilities(
+    service: CapabilitiesService = Depends(get_capabilities_service)
+) -> EmbeddingsCapabilities:
+    
+    logger.info("Received a request for AI embedding model capabilities")
+
+    capabilities = service.get_embedding_capabilities()
+
+    logger.info("Successfully returned AI embedding model capabilities for model %s", capabilities.model)
+
+    return capabilities

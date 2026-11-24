@@ -9,7 +9,7 @@ import lombok.Setter;
  */
 @Getter
 @Setter
-public class ModelCapabilities {
+public class ChatModelCapabilities {
 
     /**
      * The actual model

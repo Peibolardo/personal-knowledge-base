@@ -1,6 +1,7 @@
 package backend.utils.externalServiceServices;
 
-import backend.dto.capabilities.ModelCapabilities;
+import backend.dto.capabilities.ChatModelCapabilities;
+import backend.dto.capabilities.EmbeddingCapabilities;
 import backend.dto.*;
 import backend.dto.chat.ChatContextDTO;
 import backend.dto.chat.ChatResponseDTO;
@@ -162,7 +163,7 @@ public class ExternalAiService {
      *
      * @return capabilities used by the backend to calculate the available context budget
      */
-    public ModelCapabilities getModelCapabilities() {
+    public ChatModelCapabilities getModelCapabilities() {
 
         try {
             logger.info("Requesting model capabilities from the AI Service through the Feign client");
@@ -173,6 +174,26 @@ public class ExternalAiService {
             throw new UnreachableExternalServiceException("External service is unreachable..");
         } catch (Exception e) {
             logger.warn("Unexpected error response from the AI Service while retrieving model capabilities: {}", e.toString());
+            throw new ExternalServiceOperationException("Unexpected external service error");
+        }
+    }
+
+    /**
+     * Retrieves the configured embedding model and its vector dimensions from the Python AI service.
+     *
+     * @return embedding capabilities used by the backend to validate and interpret embedding vectors
+     */
+    public EmbeddingCapabilities getEmbeddingCapabilities() {
+
+        try {
+            logger.info("Requesting embedding capabilities from the AI Service through the Feign client");
+            return capabilitiesFeignClient.getEmbeddingCapabilities();
+
+        } catch (RetryableException e) {
+            logger.warn("Failed to reach the AI Service while retrieving embedding capabilities: {}", e.toString());
+            throw new UnreachableExternalServiceException("External service is unreachable..");
+        } catch (Exception e) {
+            logger.warn("Unexpected error response from the AI Service while retrieving embedding capabilities: {}", e.toString());
             throw new ExternalServiceOperationException("Unexpected external service error");
         }
     }

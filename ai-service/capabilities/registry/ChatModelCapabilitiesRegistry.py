@@ -17,7 +17,7 @@ MODEL_CAPABILITIES = {
 '''
 Registry class used to retrieve known token limits for supported models.
 '''
-class ModelCapabilitiesRegistry:
+class ChatModelCapabilitiesRegistry:
 
     '''
     Retrieves the context window and maximum completion-token limits for a registered model.

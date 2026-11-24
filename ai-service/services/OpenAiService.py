@@ -2,28 +2,16 @@ import os
 import time
 import logging
 import json
-from openai import (
-    AsyncOpenAI,
-    RateLimitError,
-    AuthenticationError,
-    APIConnectionError,
-    APITimeoutError,
-    APIError
-)
+from openai import AsyncOpenAI
 from DTOs.ChatResponse import ChatResponse
 from DTOs.Message import Message
-from exceptions.AIServiceException import (
-            AIRateLimitException,
-            AIAuthenticationException,
-            AIConnectionException,
-            AITimeoutException,
-            AIServiceException
-        )
+from exceptions.AIServiceException import AIServiceException
 from typing import List
 from infraestructure.TokenizerService import TokenizerService
 from infraestructure.OpenAIRetryService import OpenAIRetryService
 from DTOs.ChatContext import ChatContext
 from pathlib import Path
+from config.OpenAIConfig import OpenAIConfig
 
 class OpenAiService:
 
@@ -45,12 +33,16 @@ class OpenAiService:
     def __init__(self):
         self.client = AsyncOpenAI(max_retries=0)
         self.logger = logging.getLogger("uvicorn.error")
-        self.model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-        self.system_prompt = os.getenv("SYSTEM_PROMPT")
+
+        #Set the model and system prompt from the environment configuration
+        self.config = OpenAIConfig()
+        self.model = self.config.model
+        self.system_prompt = self.config.system_prompt
 
         #TokenizerService with the model established in the env file
         self.tokenizer = TokenizerService(self.model)
 
+        #Service to execute the OpenAI API calls with retry logic
         self.retry_service = OpenAIRetryService()
 
         self.summary_system_prompt = self.SUMMARY_SYSTEM_PROMPT
@@ -134,73 +126,65 @@ class OpenAiService:
     """
     async def summarize_conversation(self, chatContext: ChatContext) -> str:
 
-        #Set up maximum attempts to retryable routine
-        max_attempts = 3
+        self.logger.info("Attempting to summarize the conversation")
 
-        #Set up seconds to sleep in case of retry routine
-        delay = 1
+        newMessages = []
+        
+        #Check if the system prompt is null
+        if not self.summary_system_prompt:
+            raise ValueError("SYSTEM_PROMPT environment variable is not configured")
 
-        for attempt in range(1, max_attempts + 1):
+        # Create a list with the new messages to summarize
+        for msg in chatContext.messageDTOList:
+            newMessages.append({
+                "role": msg.role.value,
+                "content": msg.content
+        })
 
-            self.logger.info("Attempting to summarize the conversation")
+        # Create a JSON with the current summary and the new messages to summarize
+        summary_input = {
+            "current_summary": chatContext.currentSummary,
+            "new_messages": newMessages
+        }
 
-            newMessages = []
-            
-            #Check if the system prompt is null
-            if not self.summary_system_prompt:
-                raise ValueError("SYSTEM_PROMPT environment variable is not configured")
-
-            # Create a list with the new messages to summarize
-            for msg in chatContext.messageDTOList:
-                newMessages.append({
-                    "role": msg.role.value,
-                    "content": msg.content
-            })
-
-            # Create a JSON with the current summary and the new messages to summarize
-            summary_input = {
-                "current_summary": chatContext.currentSummary,
-                "new_messages": newMessages
-            }
-
-            # Create a list with the system prompt and the user prompt with the current summary and the new messages to summarize
-            messages = [
-                {
-                    "role": "system",
-                    "content": self.summary_system_prompt
-                },
-                {
-                    "role": "user",
-                    "content": json.dumps(
-                        summary_input,
-                        ensure_ascii=False
-                    )
-                }
-            ]
-
-            self.logger.info("Summarizing conversation with %d new messages", len(newMessages))
-
-            # Send the request to the OpenAI API with the model, the system prompt and the user prompt with the current summary and the new messages to summarize
-            summarization_operation = lambda: self.client.chat.completions.create(
-                        model = self.model,
-                        messages = messages,
-                        max_completion_tokens = chatContext.maxCompletionTokens
-                    )
-            
-            response = await self.retry_service.execute(summarization_operation)
-
-            # Get the updated summary from the response
-            updated_summary = response.choices[0].message.content
-
-            # Check if the updated summary is empty or null, if so, raise an exception
-            if not updated_summary or not updated_summary.strip():
-                raise AIServiceException(
-                    "AI service returned an empty summary"
+        # Create a list with the system prompt and the user prompt with the current summary and the new messages to summarize
+        messages = [
+            {
+                "role": "system",
+                "content": self.summary_system_prompt
+            },
+            {
+                "role": "user",
+                "content": json.dumps(
+                    summary_input,
+                    ensure_ascii=False
                 )
+            }
+        ]
 
-            self.logger.info("Successfully summarized the conversation")
-            
-            return updated_summary.strip()
+        self.logger.info("Summarizing conversation with %d new messages", len(newMessages))
+
+        # Send the request to the OpenAI API with the model, the system prompt and the user prompt with the current summary and the new messages to summarize
+        summarization_operation = lambda: self.client.chat.completions.create(
+                    model = self.model,
+                    messages = messages,
+                    max_completion_tokens = chatContext.maxCompletionTokens
+                )
+        
+        response = await self.retry_service.execute(summarization_operation)
+
+        # Get the updated summary from the response
+        updated_summary = response.choices[0].message.content
+
+        # Check if the updated summary is empty or null, if so, raise an exception
+        if not updated_summary or not updated_summary.strip():
+            raise AIServiceException(
+                "AI service returned an empty summary"
+            )
+
+        self.logger.info("Successfully summarized the conversation")
+        
+        return updated_summary.strip()
 
 
 

@@ -1,6 +1,6 @@
 package backend.config;
 
-import backend.dto.capabilities.ModelCapabilities;
+import backend.dto.capabilities.ChatModelCapabilities;
 import lombok.Getter;
 import lombok.Setter;
 //Binds application.properties to our Config attributes looking for the prefix
@@ -55,7 +55,7 @@ public class GlobalContextConfig {
     /**
      * Helper function to retrieve the available context window tokens for chat
      */
-    public int getAvailableChatInputTokens(ModelCapabilities capabilities) {
+    public int getAvailableChatInputTokens(ChatModelCapabilities capabilities) {
 
         return capabilities.getContextWindowTokens()
                 - requestMessageTokenBudget
@@ -67,7 +67,7 @@ public class GlobalContextConfig {
     /**
      * Helper function to retrieve the available context window tokens for summarization
      */
-    public int getAvailableSummaryInputTokens(ModelCapabilities capabilities) {
+    public int getAvailableSummaryInputTokens(ChatModelCapabilities capabilities) {
 
         return capabilities.getContextWindowTokens()
                 - summaryTokenBudget

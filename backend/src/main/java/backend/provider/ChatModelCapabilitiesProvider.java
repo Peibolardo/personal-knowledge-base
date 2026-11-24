@@ -1,6 +1,6 @@
 package backend.provider;
 
-import backend.dto.capabilities.ModelCapabilities;
+import backend.dto.capabilities.ChatModelCapabilities;
 import lombok.Getter;
 import org.springframework.stereotype.Component;
 
@@ -9,11 +9,11 @@ import org.springframework.stereotype.Component;
  */
 @Component
 @Getter
-public class ModelCapabilitiesProvider {
+public class ChatModelCapabilitiesProvider {
 
-    private ModelCapabilities capabilities;
+    private ChatModelCapabilities capabilities;
 
-    public void initialize(ModelCapabilities capabilities) {
+    public void initialize(ChatModelCapabilities capabilities) {
         this.capabilities = capabilities;
     }
 

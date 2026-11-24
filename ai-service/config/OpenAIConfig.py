@@ -29,16 +29,11 @@ class OpenAIConfig(BaseSettings):
         default="gpt-4o-mini",
         validation_alias="OPENAI_MODEL"
     )
-
-    embeddings_model: str = Field(
-        default="text-embedding-3-small",
-        validation_alias="OPENAI_EMBEDDING_MODEL"
-    )
     
     system_prompt: str = Field(
         validation_alias="SYSTEM_PROMPT"
     )
-    
+
     temperature: float | None = None
     top_p: float | None = None
 
