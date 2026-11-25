@@ -46,6 +46,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.stream.Collectors;
 
 import static backend.utils.IdValidator.validateUuids;
@@ -68,9 +70,16 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
     private static final int SEMANTIC_CONTEXT_BATCH_SIZE = 10;
     private final TaskExecutor summaryTaskExecutor;
     private final TaskExecutor embeddingTaskExecutor;
+    private final TaskExecutor embeddingMigrationTaskExecutor;
     private final GlobalContextConfig globalContextConfig;
     private final ContextBudget contextBudget;
     private final EmbeddingCapabilitiesProvider embeddingCapabilitiesProvider;
+
+    // Set to store the migrations scheduled
+    private final Set<String> migratingConversations = ConcurrentHashMap.newKeySet();
+
+    // ConcurrentHashMap to manage the locks of the conversation embedding logic
+    private final ConcurrentMap<String, Object> conversationLocks = new ConcurrentHashMap<>();
 
     public OpenAICommandServiceImpl(MessageRepository messageRepository,
                                     ConversationRepository conversationRepository,
@@ -83,6 +92,7 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
                                     EmbeddingCommandService embeddingCommandService,
                                     @Qualifier("summaryTaskExecutor") TaskExecutor summaryTaskExecutor,
                                     @Qualifier("embeddingTaskExecutor")TaskExecutor embeddingTaskExecutor,
+                                    @Qualifier("embeddingMigrationTaskExecutor")TaskExecutor embeddingMigrationTaskExecutor,
                                     GlobalContextConfig globalContextConfig,
                                     ContextBudget contextBudget, EmbeddingCapabilitiesProvider embeddingCapabilitiesProvider
     ) {
@@ -99,6 +109,7 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
 
         this.summaryTaskExecutor = summaryTaskExecutor;
         this.embeddingTaskExecutor = embeddingTaskExecutor;
+        this.embeddingMigrationTaskExecutor = embeddingMigrationTaskExecutor;
         this.globalContextConfig = globalContextConfig;
         this.contextBudget = contextBudget;
         this.embeddingCapabilitiesProvider = embeddingCapabilitiesProvider;
@@ -555,7 +566,7 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
 
         Message responseMessage = persistMessages(requestMessage, doneDTO, streamState);
 
-        triggerEmbedding(requestMessage.getId(), responseMessage.getId());
+        triggerEmbedding(requestMessage.getId(), responseMessage.getId(), requestMessage.getConversation().getId());
 
     }
 
@@ -731,7 +742,7 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
         if (!embeddingModel.equals(embeddingCapabilitiesProvider.getEmbeddingCapabilities().getModel())){
 
             logger.info("Skipping semantic retrieval for conversation {} because its embedding model is not the same to the embedding configuration", conversationId);
-
+            triggerMigration(conversationId);
             return new PreparedMessages(requestMessage, new ArrayList<>(), preparedMessages.remainingTokens());
 
         }
@@ -841,11 +852,16 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
      * @param requestId ID of the persisted user message
      * @param responseId ID of the persisted assistant response
      */
-    private void triggerEmbedding(String requestId, String responseId) {
+    private void triggerEmbedding(String requestId, String responseId, String conversationId) {
+
         try {
             embeddingTaskExecutor.execute(() -> {
+                Object lock = getConversationLock(conversationId);
+
                 try {
-                    embeddingCommandService.embedRequestResponseMessages(requestId, responseId);
+                    synchronized (lock) {
+                        embeddingCommandService.embedRequestResponseMessages(requestId, responseId);
+                    }
                 } catch (Exception e) {
                     logger.error("Embedding generation failed for request {} and response {}", requestId, responseId, e);
                 }
@@ -855,7 +871,39 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
         }
     }
 
+    /**
+     * Schedules the migration of all message embeddings for a conversation on its dedicated executor.
+     * Migration failures are logged and do not block the caller while the database transaction rolls back.
+     *
+     * @param conversationId ID of the conversation whose embeddings should be migrated
+     */
+    private void triggerMigration(String conversationId) {
 
+        if (!migratingConversations.add(conversationId)) {
+            logger.debug("Migration already running for conversation {}", conversationId);
+            return;
+        }
+
+        try {
+            embeddingMigrationTaskExecutor.execute(() -> {
+
+                Object lock = getConversationLock(conversationId);
+                try {
+                    synchronized (lock) {
+                        embeddingCommandService.migrateConversationEmbeddings(conversationId);
+                    }
+                } catch (Exception e) {
+                    logger.error("Embedding migration failed for conversation {}", conversationId, e);
+                }
+                finally {
+                    migratingConversations.remove(conversationId);
+                }
+            });
+        } catch (TaskRejectedException e) {
+            migratingConversations.remove(conversationId);
+            logger.error("Could not schedule embedding migration for conversation {}", conversationId, e);
+        }
+    }
 
 
     /**
@@ -900,6 +948,13 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
         private boolean started;
         private boolean terminalSeen;
 
+    }
+
+    private Object getConversationLock(String conversationId) {
+        return conversationLocks.computeIfAbsent(
+                conversationId,
+                id -> new Object()
+        );
     }
 
 

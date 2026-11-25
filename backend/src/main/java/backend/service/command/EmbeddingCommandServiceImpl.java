@@ -4,6 +4,7 @@ import backend.dto.embeddings.EmbeddingChunkDTO;
 import backend.dto.embeddings.EmbeddingRequestDTO;
 import backend.dto.embeddings.EmbeddingResponseDTO;
 import backend.dto.embeddings.QueryEmbeddingResponseDTO;
+import backend.exception.customExceptions.ConflictException;
 import backend.exception.customExceptions.ExternalServiceOperationException;
 import backend.exception.customExceptions.InvalidRequestException;
 import backend.exception.customExceptions.ResourceNotFoundException;
@@ -21,6 +22,8 @@ import jakarta.transaction.Transactional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -43,13 +46,16 @@ public class EmbeddingCommandServiceImpl implements EmbeddingCommandService {
     private final ExternalAiService externalAiService;
     private final EmbeddingChunkMapper embeddingChunkMapper;
     private final EmbeddingCapabilitiesProvider embeddingCapabilitiesProvider;
+    private final TransactionTemplate transactionTemplate;
 
     public EmbeddingCommandServiceImpl(
             MessageChunkRepository messageChunkRepository,
             MessageRepository messageRepository,
             ConversationRepository conversationRepository,
             ExternalAiService externalAiService,
-            EmbeddingChunkMapper embeddingChunkMapper, EmbeddingCapabilitiesProvider embeddingCapabilitiesProvider
+            EmbeddingChunkMapper embeddingChunkMapper,
+            EmbeddingCapabilitiesProvider embeddingCapabilitiesProvider,
+            PlatformTransactionManager transactionManager
     ) {
         this.messageChunkRepository = messageChunkRepository;
         this.messageRepository = messageRepository;
@@ -57,6 +63,7 @@ public class EmbeddingCommandServiceImpl implements EmbeddingCommandService {
         this.externalAiService = externalAiService;
         this.embeddingChunkMapper = embeddingChunkMapper;
         this.embeddingCapabilitiesProvider = embeddingCapabilitiesProvider;
+        this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
 
     /**
@@ -114,15 +121,15 @@ public class EmbeddingCommandServiceImpl implements EmbeddingCommandService {
         // 7. Keep the conversation's model aligned with the model used by every persisted chunk.
         String embeddingModel = chunksToPersist.getFirst().getEmbeddingModel();
 
-        if (chunksToPersist.stream().anyMatch(chunk -> !embeddingModel.equals(chunk.getEmbeddingModel()))) {
-            throw new ExternalServiceOperationException("The AI service returned different embedding models for one turn");
-        }
-
         var conversation = conversationRepository.findById(requestMessage.getConversation().getId())
                 .orElseThrow(() -> new ResourceNotFoundException("The conversation for the messages was not found"));
 
-        conversation.setEmbeddingModel(embeddingModel);
-        conversationRepository.save(conversation);
+        if (conversation.getEmbeddingModel() == null) {
+            conversation.setEmbeddingModel(embeddingCapabilitiesProvider.getEmbeddingCapabilities().getModel());
+
+        } else if (!conversation.getEmbeddingModel().equals(embeddingCapabilitiesProvider.getEmbeddingCapabilities().getModel())) {
+            throw new ConflictException("Generated embeddings do not match the conversation embedding model");
+        }
 
         // 8. Persist all validated chunks after both embedding requests have succeeded.
         messageChunkRepository.saveAll(chunksToPersist);
@@ -267,7 +274,23 @@ public class EmbeddingCommandServiceImpl implements EmbeddingCommandService {
         );
     }
 
-    @Transactional
+    /**
+     * Generates replacement embeddings for every message in a conversation before changing persisted chunks.
+     *
+     * <p>Migration flow:</p>
+     * <ol>
+     *     <li>Load the conversation's messages.</li>
+     *     <li>Generate and validate each message's chunks, collecting them without changing the database.</li>
+     *     <li>Pass the complete chunk set to {@code replaceConversationEmbeddings} for atomic persistence.</li>
+     * </ol>
+     *
+     * <p>If embedding generation fails, replacement is never started and the existing chunks remain intact.</p>
+     *
+     * @param conversationId ID of the conversation whose message embeddings are migrated
+     * @throws ResourceNotFoundException if the conversation does not exist during replacement
+     * @throws InvalidRequestException if a stored message has no content to embed
+     * @throws ExternalServiceOperationException if embedding generation returns invalid data
+     */
     public void migrateConversationEmbeddings(String conversationId){
 
         // 1. Retrieve all the messages for a conversation
@@ -281,18 +304,50 @@ public class EmbeddingCommandServiceImpl implements EmbeddingCommandService {
             chunksToPersist.addAll(embedMessage(message));
         }
 
+        // 4. Get the model used for the generated chunks, then transactionally replace stored chunks and model metadata.
+        String embeddingModel = embeddingCapabilitiesProvider.getEmbeddingCapabilities().getModel();
+        replaceConversationEmbeddings(conversationId, chunksToPersist, embeddingModel);
 
+    }
 
-        messageChunkRepository.saveAll(chunksToPersist);
+    /**
+     * Atomically replaces all stored chunks for a conversation and records the model used to generate them.
+     *
+     * <p>Database flow:</p>
+     * <ol>
+     *     <li>Confirm that the target conversation exists.</li>
+     *     <li>Physically delete its old chunks so soft-deleted rows cannot conflict with chunk indexes.</li>
+     *     <li>Persist the fully generated replacement chunks.</li>
+     *     <li>Update the conversation's embedding model before committing.</li>
+     * </ol>
+     *
+     * <p>{@link TransactionTemplate} starts the transaction here, after embedding generation has completed.
+     * Any persistence failure rolls back the deletion, inserted chunks, and model update together.</p>
+     *
+     * @param conversationId ID of the conversation whose chunks are replaced
+     * @param chunksToPersist validated replacement chunks for the conversation's messages
+     * @param embeddingModel model used to generate the replacement chunk embeddings
+     * @throws ResourceNotFoundException if the conversation does not exist
+     */
+    private void replaceConversationEmbeddings(
+            String conversationId,
+            List<MessageChunk> chunksToPersist,
+            String embeddingModel
+    ) {
 
+        transactionTemplate.executeWithoutResult(status -> {
+            Conversation conversation = conversationRepository.findById(conversationId)
+                    .orElseThrow(() -> new ResourceNotFoundException("There is no Conversation with this ID"));
 
-        Conversation conversation = conversationRepository.findById(conversationId)
-                .orElseThrow(() -> new ResourceNotFoundException("There is no Conversation with this ID"));
+            int deletedChunks = messageChunkRepository.deleteAllChunksByConversationId(conversationId);
+            logger.info("Removed {} existing embedding chunks for conversation {}", deletedChunks, conversationId);
 
-        conversation.setEmbeddingModel(embeddingCapabilitiesProvider.getEmbeddingCapabilities().getModel());
+            messageChunkRepository.saveAll(chunksToPersist);
 
-        conversationRepository.save(conversation);
+            conversation.setEmbeddingModel(embeddingModel);
 
+            conversationRepository.save(conversation);
+        });
     }
 
     /**

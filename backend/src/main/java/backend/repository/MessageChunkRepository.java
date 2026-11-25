@@ -2,6 +2,7 @@ package backend.repository;
 
 import backend.model.MessageChunk;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -11,6 +12,23 @@ import java.util.UUID;
 
 @Repository
 public interface MessageChunkRepository extends JpaRepository<MessageChunk, String> {
+
+    /**
+     * Physically removes every chunk attached to a message in the specified conversation.
+     * A native delete is required because MessageChunk uses soft deletion and has a unique
+     * constraint on message ID and chunk index, while migration must replace the existing rows.
+     *
+     * @param conversationId ID of the conversation whose existing chunks are replaced
+     * @return number of chunk rows removed
+     */
+    @Modifying
+    @Query(value = """
+            DELETE FROM message_chunks mc
+            USING messages m
+            WHERE mc.message_id = m.id
+              AND m.conversation_id = :conversationId
+            """, nativeQuery = true)
+    int deleteAllChunksByConversationId(@Param("conversationId") String conversationId);
 
     /**
      * Retrieves unique conversation turn IDs ranked by the nearest matching chunk, using offset pagination.
