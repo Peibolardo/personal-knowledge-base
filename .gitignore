@@ -30,6 +30,10 @@ replay_pid*
 
 /ai-service/.venv
 
+/.vscode
+
+/.env
+
 /frontend/.env
 
 /frontend/node_modules

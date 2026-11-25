@@ -4,20 +4,26 @@ import backend.dto.embeddings.EmbeddingChunkDTO;
 import backend.dto.embeddings.EmbeddingRequestDTO;
 import backend.dto.embeddings.EmbeddingResponseDTO;
 import backend.dto.embeddings.QueryEmbeddingResponseDTO;
+import backend.exception.customExceptions.ConflictException;
 import backend.exception.customExceptions.ExternalServiceOperationException;
 import backend.exception.customExceptions.InvalidRequestException;
 import backend.exception.customExceptions.ResourceNotFoundException;
 import backend.mapper.EmbeddingChunkMapper;
+import backend.model.Conversation;
 import backend.model.Message;
 import backend.model.MessageChunk;
+import backend.provider.EmbeddingCapabilitiesProvider;
 import backend.repository.ConversationRepository;
 import backend.repository.MessageChunkRepository;
 import backend.repository.MessageRepository;
 import backend.service.interfaces.EmbeddingCommandService;
 import backend.utils.externalServiceServices.ExternalAiService;
+import jakarta.transaction.Transactional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -31,7 +37,6 @@ import static backend.utils.VectorUtils.toVectorString;
 public class EmbeddingCommandServiceImpl implements EmbeddingCommandService {
 
     private static final Logger logger = LoggerFactory.getLogger(EmbeddingCommandServiceImpl.class);
-    private static final int EMBEDDING_DIMENSIONS = 1536;
     private static final double SIMILARITY_THRESHOLD = 0.70;
 
     private final MessageChunkRepository messageChunkRepository;
@@ -39,19 +44,25 @@ public class EmbeddingCommandServiceImpl implements EmbeddingCommandService {
     private final ConversationRepository conversationRepository;
     private final ExternalAiService externalAiService;
     private final EmbeddingChunkMapper embeddingChunkMapper;
+    private final EmbeddingCapabilitiesProvider embeddingCapabilitiesProvider;
+    private final TransactionTemplate transactionTemplate;
 
     public EmbeddingCommandServiceImpl(
             MessageChunkRepository messageChunkRepository,
             MessageRepository messageRepository,
             ConversationRepository conversationRepository,
             ExternalAiService externalAiService,
-            EmbeddingChunkMapper embeddingChunkMapper
+            EmbeddingChunkMapper embeddingChunkMapper,
+            EmbeddingCapabilitiesProvider embeddingCapabilitiesProvider,
+            PlatformTransactionManager transactionManager
     ) {
         this.messageChunkRepository = messageChunkRepository;
         this.messageRepository = messageRepository;
         this.conversationRepository = conversationRepository;
         this.externalAiService = externalAiService;
         this.embeddingChunkMapper = embeddingChunkMapper;
+        this.embeddingCapabilitiesProvider = embeddingCapabilitiesProvider;
+        this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
 
     /**
@@ -63,6 +74,7 @@ public class EmbeddingCommandServiceImpl implements EmbeddingCommandService {
      * @throws InvalidRequestException if the IDs do not identify the user and assistant messages from the same turn
      * @throws ResourceNotFoundException if either message cannot be found
      */
+    @Transactional
     public void embedRequestResponseMessages(String requestId, String responseId) {
 
         // 1. Confirm both message IDs are valid UUIDs and refer to different messages.
@@ -108,15 +120,15 @@ public class EmbeddingCommandServiceImpl implements EmbeddingCommandService {
         // 7. Keep the conversation's model aligned with the model used by every persisted chunk.
         String embeddingModel = chunksToPersist.getFirst().getEmbeddingModel();
 
-        if (chunksToPersist.stream().anyMatch(chunk -> !embeddingModel.equals(chunk.getEmbeddingModel()))) {
-            throw new ExternalServiceOperationException("The AI service returned different embedding models for one turn");
-        }
-
         var conversation = conversationRepository.findById(requestMessage.getConversation().getId())
                 .orElseThrow(() -> new ResourceNotFoundException("The conversation for the messages was not found"));
 
-        conversation.setEmbeddingModel(embeddingModel);
-        conversationRepository.save(conversation);
+        if (conversation.getEmbeddingModel() == null) {
+            conversation.setEmbeddingModel(embeddingCapabilitiesProvider.getEmbeddingCapabilities().getModel());
+
+        } else if (!conversation.getEmbeddingModel().equals(embeddingCapabilitiesProvider.getEmbeddingCapabilities().getModel())) {
+            throw new ConflictException("Generated embeddings do not match the conversation embedding model");
+        }
 
         // 8. Persist all validated chunks after both embedding requests have succeeded.
         messageChunkRepository.saveAll(chunksToPersist);
@@ -164,7 +176,7 @@ public class EmbeddingCommandServiceImpl implements EmbeddingCommandService {
                     || chunk.getTokenCount() == null
                     || chunk.getTokenCount() <= 0
                     || chunk.getEmbedding() == null
-                    || chunk.getEmbedding().size() != EMBEDDING_DIMENSIONS
+                    || chunk.getEmbedding().size() != embeddingCapabilitiesProvider.getEmbeddingCapabilities().getDimensions()
                     || chunk.getEmbedding().stream().anyMatch(value -> value == null || !Float.isFinite(value))
                     || chunk.getEmbeddingModel() == null
                     || chunk.getEmbeddingModel().isBlank()) {
@@ -207,7 +219,7 @@ public class EmbeddingCommandServiceImpl implements EmbeddingCommandService {
         // 3. Validate the vector dimensions, values, model, and compatibility with stored conversation chunks.
         if (response == null
                 || response.getEmbedding() == null
-                || response.getEmbedding().size() != EMBEDDING_DIMENSIONS
+                || response.getEmbedding().size() != embeddingCapabilitiesProvider.getEmbeddingCapabilities().getDimensions()
                 || response.getEmbedding().stream().anyMatch(value -> value == null || !Float.isFinite(value))
                 || response.getEmbeddingModel() == null
                 || response.getEmbeddingModel().isBlank()) {
@@ -259,6 +271,87 @@ public class EmbeddingCommandServiceImpl implements EmbeddingCommandService {
         return messageChunkRepository.getTurnIdsByConversationAndSimilarity(
                 conversationId, embeddingModel, queryVector, maxDistance, batchSize, offset
         );
+    }
+
+    /**
+     * Generates replacement embeddings for every message in a conversation before changing persisted chunks.
+     *
+     * <p>Migration flow:</p>
+     * <ol>
+     *     <li>Load the conversation's messages.</li>
+     *     <li>Generate and validate each message's chunks, collecting them without changing the database.</li>
+     *     <li>Pass the complete chunk set to {@code replaceConversationEmbeddings} for atomic persistence.</li>
+     * </ol>
+     *
+     * <p>If embedding generation fails, replacement is never started and the existing chunks remain intact.</p>
+     *
+     * @param conversationId ID of the conversation whose message embeddings are migrated
+     * @throws ResourceNotFoundException if the conversation does not exist during replacement
+     * @throws InvalidRequestException if a stored message has no content to embed
+     * @throws ExternalServiceOperationException if embedding generation returns invalid data
+     */
+    public void migrateConversationEmbeddings(String conversationId){
+
+        logger.info("Starting the migration for the conversation");
+        // 1. Retrieve all the messages for a conversation
+        List<Message> messageList = messageRepository.getConversationMessages(conversationId);
+
+        // 2. Create a List to store all chunks to save
+        List<MessageChunk> chunksToPersist = new ArrayList<>();
+
+        // 3. Embed with the new model the messages
+        for(Message message: messageList){
+            chunksToPersist.addAll(embedMessage(message));
+        }
+
+        // 4. Get the model used for the generated chunks, then transactionally replace stored chunks and model metadata.
+        String embeddingModel = embeddingCapabilitiesProvider.getEmbeddingCapabilities().getModel();
+        replaceConversationEmbeddings(conversationId, chunksToPersist, embeddingModel);
+
+    }
+
+    /**
+     * Atomically replaces all stored chunks for a conversation and records the model used to generate them.
+     *
+     * <p>Database flow:</p>
+     * <ol>
+     *     <li>Confirm that the target conversation exists.</li>
+     *     <li>Physically delete its old chunks so soft-deleted rows cannot conflict with chunk indexes.</li>
+     *     <li>Persist the fully generated replacement chunks.</li>
+     *     <li>Update the conversation's embedding model before committing.</li>
+     * </ol>
+     *
+     * <p>{@link TransactionTemplate} starts the transaction here, after embedding generation has completed.
+     * Any persistence failure rolls back the deletion, inserted chunks, and model update together.</p>
+     *
+     * @param conversationId ID of the conversation whose chunks are replaced
+     * @param chunksToPersist validated replacement chunks for the conversation's messages
+     * @param embeddingModel model used to generate the replacement chunk embeddings
+     * @throws ResourceNotFoundException if the conversation does not exist
+     */
+    private void replaceConversationEmbeddings(
+            String conversationId,
+            List<MessageChunk> chunksToPersist,
+            String embeddingModel
+    ) {
+
+        transactionTemplate.executeWithoutResult(status -> {
+            Conversation conversation = conversationRepository.findById(conversationId)
+                    .orElseThrow(() -> new ResourceNotFoundException("There is no Conversation with this ID"));
+
+            int deletedChunks = messageChunkRepository.deleteAllChunksByConversationId(conversationId);
+            logger.info("Removed {} existing embedding chunks for conversation {}", deletedChunks, conversationId);
+
+            messageChunkRepository.saveAll(chunksToPersist);
+
+            conversation.setEmbeddingModel(embeddingModel);
+
+            conversationRepository.save(conversation);
+
+            logger.info("Successfully migrated the hole conversation");
+
+
+        });
     }
 
     /**

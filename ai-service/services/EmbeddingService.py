@@ -3,24 +3,51 @@ import logging
 from openai import (
     AsyncOpenAI,
 )
-from services.TokenizerService import TokenizerService
-from DTOs.EmbeddingRequest import EmbeddingRequest
-from DTOs.EmbeddingResponse import EmbeddingResponse
-from DTOs.QueryEmbeddingResponse import QueryEmbeddingResponse
+from infraestructure.TokenizerService import TokenizerService
+from infraestructure.OpenAIRetryService import OpenAIRetryService
+from DTOs.embeddings.EmbeddingRequest import EmbeddingRequest
+from DTOs.embeddings.EmbeddingResponse import EmbeddingResponse
+from DTOs.embeddings.QueryEmbeddingResponse import QueryEmbeddingResponse
+from config.EmbeddingsConfig import EmbeddingsConfig
+from capabilities.registry.EmbeddingCapabilitiesRegistry import EmbeddingCapabilitiesRegistry
+from exceptions.AIServiceException import AIServiceException
 
 
 class EmbeddingService:
     
     def __init__(self):
-        self.client = AsyncOpenAI()
+        self.client = AsyncOpenAI(max_retries=0)
         self.logger = logging.getLogger("uvicorn.error")
-        self.model = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+
+        #EmbeddingsConfig to retrieve the model, chunk size, and overlap values from the environment
+        self.embeddings_config = EmbeddingsConfig()
+
+        # Set the embedding model before initializing components that depend on it
+        try:
+            self.model = self.embeddings_config.model
+        except ValueError as error:
+            raise AIServiceException("Cannot retrieve the embedding model from the environment configuration") from error
+
+        #EmbeddingCapabilitiesRegistry to retrieve the embedding model's capabilities, including dimensions
+        self.registry = EmbeddingCapabilitiesRegistry()
+
+        try:
+            self.model_limits = self.registry.get_embedding_capabilities(self.model)
+        except ValueError as error:
+            raise AIServiceException(str(error)) from error
 
         #TokenizerService with the model established in the env file
         self.tokenizer = TokenizerService(self.model)
 
-        self.chunk_size = 300
-        self.overlap = 30
+        #Service to execute the OpenAI API calls with retry logic
+        self.retry_service = OpenAIRetryService()
+
+        # Set the chunk size and overlap values from the embeddings configuration
+        self.chunk_size = self.embeddings_config.chunk_size
+        self.overlap = self.embeddings_config.overlap
+
+        # Set the embedding dimensions from the model limits retrieved from the registry
+        self.dimensions = self.model_limits["dimensions"]
 
 
     '''
@@ -48,12 +75,21 @@ class EmbeddingService:
 
         chunk_contents = [chunk["content"] for chunk in tokenized_chunks]
 
-        response = await self.client.embeddings.create(
+        embedding_operation = lambda: self.client.embeddings.create(
             model=self.model,
-            input=chunk_contents
+            input=chunk_contents,
+            dimensions=self.dimensions
+            
         )
 
+        response = await self.retry_service.execute(embedding_operation)
+
         embeddings_by_index = sorted(response.data, key=lambda item: item.index)
+
+        # Check that the embeddings returned by the API match the expected dimensions and order 
+        for embedding_data in embeddings_by_index:
+            if len(embedding_data.embedding) != self.dimensions:
+                raise ValueError("Unexpected embedding dimensions")
 
         expected_indices = list(range(len(tokenized_chunks)))
         actual_indices = [embedding_data.index for embedding_data in embeddings_by_index]
@@ -91,10 +127,13 @@ class EmbeddingService:
 
         self.logger.info("Generating an embedding for the complete user query")
 
-        response = await self.client.embeddings.create(
+        query_embedding_operation = lambda: self.client.embeddings.create(
             model=self.model,
-            input=query
+            input=query,
+            dimensions=self.dimensions
         )
+
+        response = await self.retry_service.execute(query_embedding_operation)
 
         if len(response.data) != 1 or response.data[0].index != 0:
             self.logger.error("Embedding API returned an unexpected result for the query")

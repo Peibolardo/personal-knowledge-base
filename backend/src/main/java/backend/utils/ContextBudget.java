@@ -1,8 +1,7 @@
 package backend.utils;
 
 import backend.config.GlobalContextConfig;
-import backend.dto.capabilities.ModelCapabilities;
-import backend.provider.ModelCapabilitiesProvider;
+import backend.provider.ChatModelCapabilitiesProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -16,18 +15,18 @@ import org.springframework.stereotype.Component;
 public class ContextBudget {
 
     private static final Logger logger = LoggerFactory.getLogger(ContextBudget.class);
-    private final ModelCapabilitiesProvider modelCapabilitiesProvider;
+    private final ChatModelCapabilitiesProvider chatModelCapabilitiesProvider;
     private final GlobalContextConfig globalContextConfig;
 
     /**
      * Creates the budget calculator using capabilities loaded at application startup and configured token reserves.
      *
-     * @param modelCapabilitiesProvider provider initialized with the AI service's model and prompt capabilities
+     * @param chatModelCapabilitiesProvider provider initialized with the AI service's model and prompt capabilities
      * @param globalContextConfig configured output reserves, safety margin, and per-operation token limits
      */
-    public ContextBudget(ModelCapabilitiesProvider modelCapabilitiesProvider,
+    public ContextBudget(ChatModelCapabilitiesProvider chatModelCapabilitiesProvider,
                          GlobalContextConfig globalContextConfig) {
-        this.modelCapabilitiesProvider = modelCapabilitiesProvider;
+        this.chatModelCapabilitiesProvider = chatModelCapabilitiesProvider;
         this.globalContextConfig = globalContextConfig;
     }
 
@@ -39,9 +38,9 @@ public class ContextBudget {
      */
     public int getChatDynamicContextBudget(){
 
-        int availableTokens = globalContextConfig.getAvailableChatInputTokens(modelCapabilitiesProvider.getCapabilities());
-        int developerTokens = modelCapabilitiesProvider.getCapabilities().getPrompts().getChat().getDeveloperPromptTokens();
-        int systemTokens = modelCapabilitiesProvider.getCapabilities().getPrompts().getChat().getSystemPromptTokens();
+        int availableTokens = globalContextConfig.getAvailableChatInputTokens(chatModelCapabilitiesProvider.getCapabilities());
+        int developerTokens = chatModelCapabilitiesProvider.getCapabilities().getPrompts().getChat().getDeveloperPromptTokens();
+        int systemTokens = chatModelCapabilitiesProvider.getCapabilities().getPrompts().getChat().getSystemPromptTokens();
 
         logger.info("Retrieving the maximum context for chat to use based on the Configurations and Model capabilities");
 
@@ -57,9 +56,9 @@ public class ContextBudget {
      */
     public int getSummaryDynamicContextBudget(){
 
-        int availableTokens = globalContextConfig.getAvailableSummaryInputTokens(modelCapabilitiesProvider.getCapabilities());
-        int developerTokens = modelCapabilitiesProvider.getCapabilities().getPrompts().getSummarization().getDeveloperPromptTokens();
-        int systemTokens = modelCapabilitiesProvider.getCapabilities().getPrompts().getSummarization().getSystemPromptTokens();
+        int availableTokens = globalContextConfig.getAvailableSummaryInputTokens(chatModelCapabilitiesProvider.getCapabilities());
+        int developerTokens = chatModelCapabilitiesProvider.getCapabilities().getPrompts().getSummarization().getDeveloperPromptTokens();
+        int systemTokens = chatModelCapabilitiesProvider.getCapabilities().getPrompts().getSummarization().getSystemPromptTokens();
 
         logger.info("Retrieving the maximum context for summarization to use based on the Configurations and Model capabilities");
 

@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 from typing import List
-from DTOs.EmbeddingChunk import EmbeddingChunk
+from DTOs.embeddings.EmbeddingChunk import EmbeddingChunk
 
 """
 Embedding Response DTO containing the chunks generated from the source content.

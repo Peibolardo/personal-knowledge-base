@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Body, Depends
 from services.EmbeddingService import EmbeddingService
 from functools import lru_cache
-from DTOs.EmbeddingRequest import EmbeddingRequest
-from DTOs.EmbeddingResponse import EmbeddingResponse
-from DTOs.QueryEmbeddingResponse import QueryEmbeddingResponse
+from DTOs.embeddings.EmbeddingRequest import EmbeddingRequest
+from DTOs.embeddings.EmbeddingResponse import EmbeddingResponse
+from DTOs.embeddings.QueryEmbeddingResponse import QueryEmbeddingResponse
 
 import logging
 

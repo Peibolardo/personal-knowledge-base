@@ -1,3 +1,4 @@
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 '''
@@ -24,8 +25,15 @@ class OpenAIConfig(BaseSettings):
             extra="ignore"
         )
 
-    model: str = "gpt-4o-mini"
-    system_prompt: str 
+    model: str = Field(
+        default="gpt-4o-mini",
+        validation_alias="OPENAI_MODEL"
+    )
+    
+    system_prompt: str = Field(
+        validation_alias="SYSTEM_PROMPT"
+    )
+
     temperature: float | None = None
     top_p: float | None = None
 

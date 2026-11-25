@@ -22,4 +22,7 @@ public interface EmbeddingCommandService {
             int batchSize
     );
 
+    /** Regenerates and transactionally replaces all embedding chunks for a conversation. */
+    void migrateConversationEmbeddings(String conversationId);
+
 }

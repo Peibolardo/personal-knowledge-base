@@ -1,13 +1,16 @@
 import logging
 from pathlib import Path
 
-from capabilities.ModelCapabilities import ModelCapabilities
+from capabilities.ChatModelCapabilities import ChatModelCapabilities
 from capabilities.OperationPromptCapabilities import OperationPromptCapabilities
 from capabilities.PromptCapabilities import PromptCapabilities
-from capabilities.registry.ModelCapabilitiesRegistry import ModelCapabilitiesRegistry
+from capabilities.registry.ChatModelCapabilitiesRegistry import ChatModelCapabilitiesRegistry
+from capabilities.EmbeddingsCapabilities import EmbeddingsCapabilities
+from capabilities.registry.EmbeddingCapabilitiesRegistry import EmbeddingCapabilitiesRegistry
+from config.EmbeddingsConfig import EmbeddingsConfig
 from config.OpenAIConfig import OpenAIConfig
 from exceptions.AIServiceException import AIServiceException
-from services.TokenizerService import TokenizerService
+from infraestructure.TokenizerService import TokenizerService
 
 
 '''
@@ -27,9 +30,13 @@ class CapabilitiesService:
     tokenizer: Optional tokenizer for counting prompt tokens with the configured model encoding.
     '''
     def __init__(self):
+
     
         self.config = OpenAIConfig()
-        self.model_capabilities_registry =  ModelCapabilitiesRegistry()
+        self.model_capabilities_registry = ChatModelCapabilitiesRegistry()
+
+        self.embedding_capabilities_registry = EmbeddingCapabilitiesRegistry()
+        self.embeddings_config = EmbeddingsConfig()
 
         try:
             self.model_limits = self.model_capabilities_registry.get_model_capabilities(self.config.model)
@@ -50,16 +57,36 @@ class CapabilitiesService:
         self._capabilities = self._build_capabilities()
 
 
+
     '''
     Returns the configured model name, its registered context and completion limits, and cached prompt counts.
     '''
-    def get_capabilities(self) -> ModelCapabilities:
+    def get_capabilities(self) -> ChatModelCapabilities:
 
-        return ModelCapabilities(
+        return ChatModelCapabilities(
             model=self.config.model,
             context_window_tokens=self.model_limits["context_window_tokens"],
             model_max_completion_tokens=self.model_limits["max_completion_tokens"],
             prompts=self._capabilities,
+        )
+
+
+    '''
+    Returns the configured embedding model name and its registered embedding dimensions.
+    '''
+    def get_embedding_capabilities(self) -> EmbeddingsCapabilities:
+
+        # Retrieve the embedding model from the embeddings configuration, raising an exception if it cannot be retrieved
+        try:    
+            embedding_model = self.embeddings_config.model
+        except ValueError as error:
+            raise AIServiceException("Cannot retrieve the embedding model from the environment configuration") from error
+
+        return EmbeddingsCapabilities(
+
+            model=embedding_model,
+            dimensions=self.embedding_capabilities_registry.get_embedding_capabilities(embedding_model)["dimensions"],
+
         )
 
     '''

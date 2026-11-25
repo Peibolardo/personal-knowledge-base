@@ -14,6 +14,7 @@ import backend.mapper.MessageChatResponseMapper;
 import backend.mapper.MessageMapper;
 import backend.model.Conversation;
 import backend.model.Message;
+import backend.provider.EmbeddingCapabilitiesProvider;
 import backend.repository.ConversationRepository;
 import backend.repository.MessageRepository;
 import backend.service.interfaces.EmbeddingCommandService;
@@ -45,6 +46,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.stream.Collectors;
 
 import static backend.utils.IdValidator.validateUuids;
@@ -67,8 +70,16 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
     private static final int SEMANTIC_CONTEXT_BATCH_SIZE = 10;
     private final TaskExecutor summaryTaskExecutor;
     private final TaskExecutor embeddingTaskExecutor;
+    private final TaskExecutor embeddingMigrationTaskExecutor;
     private final GlobalContextConfig globalContextConfig;
     private final ContextBudget contextBudget;
+    private final EmbeddingCapabilitiesProvider embeddingCapabilitiesProvider;
+
+    // Set to store the migrations scheduled
+    private final Set<String> migratingConversations = ConcurrentHashMap.newKeySet();
+
+    // ConcurrentHashMap to manage the locks of the conversation embedding logic
+    private final ConcurrentMap<String, Object> conversationLocks = new ConcurrentHashMap<>();
 
     public OpenAICommandServiceImpl(MessageRepository messageRepository,
                                     ConversationRepository conversationRepository,
@@ -81,8 +92,9 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
                                     EmbeddingCommandService embeddingCommandService,
                                     @Qualifier("summaryTaskExecutor") TaskExecutor summaryTaskExecutor,
                                     @Qualifier("embeddingTaskExecutor")TaskExecutor embeddingTaskExecutor,
+                                    @Qualifier("embeddingMigrationTaskExecutor")TaskExecutor embeddingMigrationTaskExecutor,
                                     GlobalContextConfig globalContextConfig,
-                                    ContextBudget contextBudget
+                                    ContextBudget contextBudget, EmbeddingCapabilitiesProvider embeddingCapabilitiesProvider
     ) {
 
         this.messageRepository = messageRepository;
@@ -97,8 +109,10 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
 
         this.summaryTaskExecutor = summaryTaskExecutor;
         this.embeddingTaskExecutor = embeddingTaskExecutor;
+        this.embeddingMigrationTaskExecutor = embeddingMigrationTaskExecutor;
         this.globalContextConfig = globalContextConfig;
         this.contextBudget = contextBudget;
+        this.embeddingCapabilitiesProvider = embeddingCapabilitiesProvider;
     }
 
     /**
@@ -552,7 +566,7 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
 
         Message responseMessage = persistMessages(requestMessage, doneDTO, streamState);
 
-        triggerEmbedding(requestMessage.getId(), responseMessage.getId());
+        triggerEmbedding(requestMessage.getId(), responseMessage.getId(), requestMessage.getConversation().getId());
 
     }
 
@@ -697,28 +711,6 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
     }
 
     /**
-     * Schedules embedding generation for the persisted user request and assistant response.
-     * Runs the embedding work on the dedicated executor so it does not block the chat response flow.
-     * Failures are logged without changing the already completed chat response.
-     *
-     * @param requestId ID of the persisted user message
-     * @param responseId ID of the persisted assistant response
-     */
-    private void triggerEmbedding(String requestId, String responseId) {
-        try {
-            embeddingTaskExecutor.execute(() -> {
-                try {
-                    embeddingCommandService.embedRequestResponseMessages(requestId, responseId);
-                } catch (Exception e) {
-                    logger.error("Embedding generation failed for request {} and response {}", requestId, responseId, e);
-                }
-            });
-        } catch (TaskRejectedException e) {
-            logger.error("Could not schedule embedding generation for request {} and response {}", requestId, responseId, e);
-        }
-    }
-
-    /**
      * Builds chronological semantic history using only the token budget left after recent context is selected.
      * Embeds the current request once, pages through unique turn candidates, and tracks the unspent budget.
      *
@@ -746,7 +738,17 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
 
         }
 
-        // 1.2 Apply the semantic threshold only to the budget remaining after recent context was prepared.
+        // 1.2 Check if the conversation embedding model is the same as the configuration one, if not start the embedding model migration
+        if (!embeddingModel.equals(embeddingCapabilitiesProvider.getEmbeddingCapabilities().getModel())){
+
+            logger.info("Skipping semantic retrieval for conversation {} because its embedding model is not the same to the embedding configuration", conversationId);
+            triggerMigration(conversationId);
+            return new PreparedMessages(requestMessage, new ArrayList<>(), preparedMessages.remainingTokens());
+
+        }
+
+
+        // 1.3 Apply the semantic threshold only to the budget remaining after recent context was prepared.
         int semanticTokenLimit = Math.min(
                 preparedMessages.remainingTokens(), globalContextConfig.getSemanticTokenBudget()
         );
@@ -843,6 +845,70 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
     }
 
     /**
+     * Schedules embedding generation for the persisted user request and assistant response.
+     * Runs the embedding work on the dedicated executor so it does not block the chat response flow.
+     * Synchronizes on the shared conversation lock so turn embeddings cannot overlap with a migration for the same conversation.
+     * Failures are logged without changing the already completed chat response.
+     *
+     * @param requestId ID of the persisted user message
+     * @param responseId ID of the persisted assistant response
+     */
+    private void triggerEmbedding(String requestId, String responseId, String conversationId) {
+
+        try {
+            embeddingTaskExecutor.execute(() -> {
+                Object lock = getConversationLock(conversationId);
+
+                try {
+                    synchronized (lock) {
+                        embeddingCommandService.embedRequestResponseMessages(requestId, responseId);
+                    }
+                } catch (Exception e) {
+                    logger.error("Embedding generation failed for request {} and response {}", requestId, responseId, e);
+                }
+            });
+        } catch (TaskRejectedException e) {
+            logger.error("Could not schedule embedding generation for request {} and response {}", requestId, responseId, e);
+        }
+    }
+
+    /**
+     * Schedules the migration of all message embeddings for a conversation on its dedicated executor.
+     * Synchronizes on the shared conversation lock so migration cannot overlap with turn embedding for the same conversation.
+     * Migration failures are logged and do not block the caller while the database transaction rolls back.
+     *
+     * @param conversationId ID of the conversation whose embeddings should be migrated
+     */
+    private void triggerMigration(String conversationId) {
+
+        if (!migratingConversations.add(conversationId)) {
+            logger.debug("Migration already running for conversation {}", conversationId);
+            return;
+        }
+
+        try {
+            embeddingMigrationTaskExecutor.execute(() -> {
+
+                Object lock = getConversationLock(conversationId);
+                try {
+                    synchronized (lock) {
+                        embeddingCommandService.migrateConversationEmbeddings(conversationId);
+                    }
+                } catch (Exception e) {
+                    logger.error("Embedding migration failed for conversation {}", conversationId, e);
+                }
+                finally {
+                    migratingConversations.remove(conversationId);
+                }
+            });
+        } catch (TaskRejectedException e) {
+            migratingConversations.remove(conversationId);
+            logger.error("Could not schedule embedding migration for conversation {}", conversationId, e);
+        }
+    }
+
+
+    /**
      * Confirms that a retrieved turn contains both the user request and assistant response.
      *
      * @param turnMessages messages returned for one turn ID
@@ -884,6 +950,23 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
         private boolean started;
         private boolean terminalSeen;
 
+    }
+
+    /**
+     * Retrieves or creates the in-memory lock associated with a conversation.
+     *
+     * <p>{@code computeIfAbsent} ensures concurrent callers receive the same lock object for the same
+     * conversation ID. Embedding generation and migration synchronize on this object, serializing
+     * those operations for one conversation while allowing different conversations to proceed independently.</p>
+     *
+     * @param conversationId ID used to identify the conversation-specific lock
+     * @return the shared lock object for the conversation
+     */
+    private Object getConversationLock(String conversationId) {
+        return conversationLocks.computeIfAbsent(
+                conversationId,
+                id -> new Object()
+        );
     }
 
 
