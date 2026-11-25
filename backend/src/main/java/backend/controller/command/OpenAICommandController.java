@@ -1,8 +1,8 @@
 package backend.controller.command;
 
 import backend.controller.interfaces.IOpenAICommandController;
-import backend.dto.ChatRequestDTO;
-import backend.dto.ChatResponseDTO;
+import backend.dto.chat.ChatRequestDTO;
+import backend.dto.chat.ChatResponseDTO;
 import backend.service.interfaces.OpenAICommandService;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;

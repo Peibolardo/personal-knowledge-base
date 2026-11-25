@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from DTOs.streaming import ChatStreamEventType
+from DTOs.streaming.ChatStreamEventType import ChatStreamEventType
 
 '''
 Service with the objective to serialize the information of each event to send it through AsyncInterator[str]

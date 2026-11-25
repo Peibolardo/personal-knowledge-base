@@ -1,7 +1,7 @@
-package backend.utils.externalServiceServices;
+package backend.utils.externalServiceServices.feign_clients;
 
-import backend.dto.ChatResponseDTO;
-import backend.dto.ChatContextDTO;
+import backend.dto.chat.ChatResponseDTO;
+import backend.dto.chat.ChatContextDTO;
 import backend.dto.MessageDTO;
 import jakarta.validation.Valid;
 import org.springframework.cloud.openfeign.FeignClient;
@@ -21,6 +21,9 @@ public interface AiApiFeignClient {
     @PostMapping(PREFIX)
     ChatResponseDTO sendMessageToAi(@RequestBody @Valid List<MessageDTO> messageDTOList);
 
+    /**
+     * Calls the python service with the context and receive the new summarization
+     */
     @PostMapping(PREFIX + "/summarize")
     String sendSummaryToTheLLM(@RequestBody @Valid ChatContextDTO chatContextDTO);
 

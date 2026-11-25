@@ -1,4 +1,4 @@
-package backend.sse.utils;
+package backend.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -10,7 +10,7 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
  * This prevents the LLM summarization call from delaying the DONE event sent to the frontend after the messages have been persisted.
  */
 @Configuration
-public class AsyncConfig {
+public class SummaryAsyncConfig {
 
     /**
      * Creates and configures a Spring-managed TaskExecutor dedicate to conversation summarization.
@@ -31,6 +31,9 @@ public class AsyncConfig {
         executor.setMaxPoolSize(4);
         executor.setQueueCapacity(50);
         executor.setThreadNamePrefix("summary-");
+
+        executor.setWaitForTasksToCompleteOnShutdown(true);
+        executor.setAwaitTerminationSeconds(30);
 
         return executor;
 

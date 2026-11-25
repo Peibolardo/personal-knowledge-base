@@ -29,6 +29,13 @@ public class Conversation{
     @Column(name = "summary", columnDefinition = "TEXT")
     private String summary;
 
+    /**
+     * Embedding model used for this conversation's message chunks.
+     * Null until embeddings are generated.
+     */
+    @Column(name = "embedding_model", length = 255)
+    private String embeddingModel;
+
     // Not storing complete object due to this function being used just for summarize
     @Column(name = "last_summarized_message_id")
     private String lastSummarizedMessageId;

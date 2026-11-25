@@ -3,10 +3,10 @@ from fastapi.responses import StreamingResponse
 from services.OpenAiService import OpenAiService
 from services.ChatStreamService import ChatStreamingService
 from DTOs.Message import Message
-from DTOs.ChatResponse import ChatResponse
+from DTOs.chat.ChatResponse import ChatResponse
 from typing import List
 from functools import lru_cache
-from DTOs.ChatContext import ChatContext
+from DTOs.chat.ChatContext import ChatContext
 
 import logging
 
@@ -44,7 +44,7 @@ async def send_message_to_api(
     
     logger.info("Received the request to POST a message to the AI")
     
-    response = service.send_message_to_api(context)
+    response = await service.send_message_to_api(context)
 
     logger.info("Successfully received the response from the AI API")
 
@@ -97,8 +97,11 @@ async def summarize_conversation(
     
     logger.info("Received the request to summarize the conversation")
 
-    response = service.summarize_conversation(chatContext)
+    response = await service.summarize_conversation(chatContext)
 
     logger.info("Successfully received the summarized response from the AI API")
 
     return response
+
+
+

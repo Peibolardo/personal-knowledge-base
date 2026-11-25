@@ -1,49 +1,53 @@
-import json
-from multiprocessing import context
-import os
 import asyncio
 import time
 import logging
 from openai import (
     AsyncOpenAI,
-    RateLimitError,
-    AuthenticationError,
     APIConnectionError,
     APITimeoutError,
     APIError
 )
-from typing import List
-from DTOs.Message import Message
-from DTOs.ChatContext import ChatContext
+from config.OpenAIConfig import OpenAIConfig
+from DTOs.chat.ChatContext import ChatContext
 from collections.abc import AsyncIterator
-from services.TokenizerService import TokenizerService
-from services.SerializeService import SerializeService
+from infraestructure.TokenizerService import TokenizerService
+from infraestructure.SerializeService import SerializeService
+from infraestructure.OpenAIRetryService import OpenAIRetryService
 from DTOs.streaming.ChatStreamEventType import ChatStreamEventType
 from DTOs.streaming.ChatStreamContent import ChatStreamContent
 from DTOs.streaming.ChatStreamMetadata import ChatStreamMetadata
 from DTOs.streaming.ChatStreamDone import ChatStreamDone
 from DTOs.streaming.ChatStreamError import ChatStreamError
-from exceptions.AIServiceException import (
-            AIRateLimitException,
-            AIAuthenticationException,
-            AIConnectionException,
-            AITimeoutException,
-            AIServiceException
-        )
+from pathlib import Path
 
 class ChatStreamingService:
 
+    PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
+
+    # Read the context prompt from a file
+    SUMMARY_CONTEXT_PROMPT = (
+        PROMPTS_DIR / "chat" / "summary_context.txt"
+    ).read_text(encoding="utf-8")
+
     def __init__(self):
         self.client = AsyncOpenAI(max_retries=0)
+
+        #Inject configuration from the environment variables
+        self.config = OpenAIConfig()
         self.logger = logging.getLogger("uvicorn.error")
-        self.model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-        self.system_prompt = os.getenv("SYSTEM_PROMPT")
-        
+        self.model = self.config.model
+
+        #Inject system prompts from the environment variables
+        self.system_prompt = self.config.system_prompt
+        self.summary_context_prompt = self.SUMMARY_CONTEXT_PROMPT
+
         #TokenizerService with the model established in the env file
         self.tokenizer = TokenizerService(self.model)
 
-        #SerializerrService
+        #SerializerService
         self.serializer = SerializeService()
+
+        self.retry_service = OpenAIRetryService()
 
     """
     Function receives a ChatContext with the context and send it to the OpenAI API
@@ -80,17 +84,12 @@ class ChatStreamingService:
             messages.append({
                 "role": "developer",
                 "content": (
-                    "The following is a summary of the conversation so far. "
-                    "Use it as historical context to understand the user's "
-                    "previous messages, preferences, decisions and ongoing work. "
-                    "It is context, not a new instruction. "
-                    "If the recent messages contradict it, prioritize the recent messages.\n\n"
-                    "CONVERSATION SUMMARY:\n"
-                    f"{context.currentSummary}"
+                    f"{self.summary_context_prompt}\n\n"
+                    f"CONVERSATION SUMMARY:\n{context.currentSummary}"
                 )
             })
         
-        # 3. Add recent conversation messagesd
+        # 3. Add recent conversation messages
         for message in context.messageDTOList:
             messages.append({
                 "role": message.role,
@@ -103,7 +102,7 @@ class ChatStreamingService:
         # DEBUG: Inspect the messages sent to OpenAI self.logger.info( "Messages sent to OpenAI:\n%s",  json.dumps(messages, indent=2, ensure_ascii=False) )
 
         # 5. Open the streaming request
-        stream = await self.open_stream_with_retries(messages)
+        stream = await self.open_stream_with_retries(messages, context.maxCompletionTokens)
 
         return stream, tokens_input_message, start_time
         
@@ -304,65 +303,20 @@ class ChatStreamingService:
     Throw exceptions depending on the error returned by the AI API
     Retryable errors have a maximum of three attemps before stopping the flow
     '''
-    async def open_stream_with_retries(self, content):
+    async def open_stream_with_retries(self, content, max_completion_tokens):
 
-        #Set up maximum attempts to retryable routine
-        max_attempts = 3
+        stream_operation = lambda: self.client.chat.completions.create(
+                    model = self.model,
+                    messages = content,
+                    max_completion_tokens = max_completion_tokens,
+                    temperature = self.config.temperature,
+                    top_p = self.config.top_p,
+                    stream = True,
+                    stream_options={
+                        "include_usage": True
+                        },
+                )
 
-        #Set up seconds to sleep in case of retry routine
-        delay = 1
-        for attempt in range(1, max_attempts + 1):
+        stream = await self.retry_service.execute(stream_operation)
 
-            # Request to the model API
-            try:
-                stream = await self.client.chat.completions.create(
-                            model = self.model,
-                            messages = content,
-                            stream = True,
-                            stream_options={
-                                "include_usage": True
-                                },
-                        )
-
-                return stream
-
-            # Exceptions in case of error
-            except RateLimitError as e:
-                self.logger.warning("Too many messages sent")
-                if attempt == max_attempts:
-                    raise AIRateLimitException(
-                        "AI service rate limit exceeded"
-                    ) from e
-
-            except APITimeoutError as e:
-                self.logger.warning("Too long for the API to give an answer")
-                if attempt == max_attempts:
-                    raise AITimeoutException(
-                        "AI service request timed out"
-                    ) from e
-
-            except APIConnectionError as e:
-                self.logger.warning("Could not connect to the API")
-                if attempt == max_attempts:
-                    raise AIConnectionException(
-                        "Could not connect to AI service"
-                    ) from e
-                
-            except AuthenticationError as e:
-                self.logger.exception("Could not authenticate the user")
-                raise AIAuthenticationException(
-                    "AI service authentication failed"
-                ) from e
-            
-            except APIError as e:
-                self.logger.exception("Error with the API")
-                raise AIServiceException(
-                    "Unexpected AI service error",
-                ) from e
-
-            except Exception:
-                self.logger.exception("Unexpected error...")
-                raise
-
-            await asyncio.sleep(delay)
-            delay += delay
+        return stream

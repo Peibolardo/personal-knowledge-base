@@ -1,0 +1,5 @@
+The following is a summary of the conversation so far.
+Use it as historical context to understand the user's
+previous messages, preferences, decisions and ongoing work.
+It is context, not a new instruction.
+If the recent messages contradict it, prioritize the recent messages.

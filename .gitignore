@@ -30,6 +30,10 @@ replay_pid*
 
 /ai-service/.venv
 
+/.vscode
+
+/.env
+
 /frontend/.env
 
 /frontend/node_modules
@@ -39,3 +43,4 @@ replay_pid*
 # Python cache
 __pycache__/
 *.py[cod]
+/ai-service/utils/embedding_endpoint_experiment.py
