@@ -32,6 +32,8 @@ replay_pid*
 
 /.vscode
 
+/.env
+
 /frontend/.env
 
 /frontend/node_modules

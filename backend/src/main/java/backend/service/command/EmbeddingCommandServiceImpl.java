@@ -292,6 +292,7 @@ public class EmbeddingCommandServiceImpl implements EmbeddingCommandService {
      */
     public void migrateConversationEmbeddings(String conversationId){
 
+        logger.info("Starting the migration for the conversation");
         // 1. Retrieve all the messages for a conversation
         List<Message> messageList = messageRepository.getConversationMessages(conversationId);
 
@@ -346,6 +347,10 @@ public class EmbeddingCommandServiceImpl implements EmbeddingCommandService {
             conversation.setEmbeddingModel(embeddingModel);
 
             conversationRepository.save(conversation);
+
+            logger.info("Successfully migrated the hole conversation");
+
+
         });
     }
 
