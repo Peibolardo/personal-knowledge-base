@@ -28,7 +28,7 @@ The project is divided into three independent layers that communicate over HTTP:
         ↕
 [ OpenAI API ]
  
-[ PostgreSQL ]              :5432  ←── Used by Spring Boot
+[ PostgreSQL + pgvector ]   :5433  ←── Spring Boot connects via localhost (container :5432)
 ```
 
 > **Integrated (v2.3):** responses will be streamed. Python streams chunks from OpenAI to Spring Boot, which relays them to the frontend over SSE while accumulating the full message to persist it once the stream ends. The frontend never talks to the AI service directly.
@@ -56,7 +56,7 @@ The project is divided into three independent layers that communicate over HTTP:
 | Spring Data JPA + Hibernate | Database ORM |
 | Spring WebClient | Inter-service HTTP calls |
 | MapStruct + Lombok | DTO/entity mapping and boilerplate reduction |
-| PostgreSQL 16 | Relational database |
+| PostgreSQL 16 + pgvector | Relational data and vector search |
 | Maven | Dependency management |
 
 ### AI Microservice
@@ -72,7 +72,7 @@ The project is divided into three independent layers that communicate over HTTP:
 ### Infrastructure
 | Technology | Purpose |
 |---|---|
-| Docker + Docker Compose | Containerisation (Phase 6) |
+| Docker + Docker Compose | Local PostgreSQL and pgvector |
 | pgAdmin 4 | PostgreSQL GUI |
 | Git + GitHub | Version control |
 
@@ -90,7 +90,7 @@ The project is divided into three independent layers that communicate over HTTP:
 | **v3.0** | 3 | Embeddings & Dynamic Context | Conversation embeddings, pgvector, semantic retrieval, dynamic context, initial message chunking strategy |
 | **v4.0** | 4 | Personal Knowledge Base | Full notes CRUD, document import, frontend for notes |
 | **v5.0** | 5 | RAG | Built from scratch — query processing, vector search, relevant chunks injected as context |
-| **v6.5** | 6.5 | Evaluation | Recall, faithfulness, relevancy metrics across RAG versions |
+| **v6** | 6 | Evaluation | Recall, faithfulness, relevancy metrics across RAG versions |
 | **v7.0** | 7 | Auth + AI Security | JWT, prompt injection awareness, scoped data per user |
 | **v8.0** | 8 | Tools | Function calling, AI executes actions (search_knowledge, create_note, search_web...) |
 | **v9.0** | 9 | Agents | ReAct loop, tool chaining, autonomous AI decisions |
@@ -108,15 +108,31 @@ The project is divided into three independent layers that communicate over HTTP:
 - Java 21+
 - Node.js 24+ and pnpm
 - Python 3.14+
-- PostgreSQL 16+
+- Docker with Docker Compose
 
 ### 1. Clone the repository
 ```bash
-git clone https://github.com/your-username/personal-knowledge-base.git
+git clone https://github.com/Peibolardo/personal-knowledge-base.git
 cd personal-knowledge-base
 ```
 
-### 2. Backend (Spring Boot)
+### 2. PostgreSQL (Docker Compose)
+
+From the repository root, create a `.env` file with `POSTGRES_PASSWORD=your_password`. Use the same password in the backend configuration.
+
+[Compose](compose.yaml) runs `pgvector/pgvector:0.8.7-pg16` as `pkb-postgres` and persists data in the `postgres_data` volume. Spring Boot connects to `127.0.0.1:5433`, which maps to port `5432` inside the container.
+
+```bash
+docker compose up -d postgres
+```
+
+Once PostgreSQL is ready, enable pgvector in the `pkb` database before starting the backend. Hibernate updates the application schema on startup.
+
+```bash
+docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U postgres -d pkb < backend/src/main/resources/db/phase_3_1_pgvector.sql
+```
+
+### 3. Backend (Spring Boot)
 ```bash
 cd backend
 # Configure your database in src/main/resources/application.properties
@@ -124,7 +140,7 @@ cd backend
 # Runs on http://localhost:8081
 ```
 
-### 3. Frontend (Vue 3)
+### 4. Frontend (Vue 3)
 ```bash
 cd frontend
 pnpm install
@@ -132,7 +148,7 @@ pnpm run dev
 # Runs on http://localhost:3000
 ```
 
-### 4. AI Microservice (Python)
+### 5. AI Microservice (Python)
 ```bash
 cd ai-service
 python -m venv venv
@@ -151,7 +167,7 @@ uvicorn main:app --reload --port 8080
 ```properties
 server.port=8081
  
-spring.datasource.url=jdbc:postgresql://localhost:5432/pkb
+spring.datasource.url=jdbc:postgresql://localhost:5433/pkb
 spring.datasource.username=postgres
 spring.datasource.password=your_password
  
@@ -184,24 +200,19 @@ personal-knowledge-base/
 │   ├── services/    ← Business logic + OpenAI calls
 │   ├── DTOs/        ← Request and response models
 │   └── main.py      ← App entry point
+├── compose.yaml     ← Local PostgreSQL and pgvector
 └── README.md
 ```
 
 ---
 
-## 🧱 Phase 3.1 — Embeddings Foundation
-
-The backend currently uses Hibernate schema auto-update (`spring.jpa.hibernate.ddl-auto=update`) and has no Flyway/Liquibase migration framework. New entity columns and the message_chunks table are therefore applied by Hibernate at startup. Before startup, run `backend/src/main/resources/db/phase_3_1_pgvector.sql` once against PostgreSQL; the server must have the pgvector extension installed.
-
-Existing messages keep `turn_id = NULL` because their original user/assistant pairing cannot be reconstructed safely from role and timestamps alone. New turns receive one UUID shared by the user message and assistant response. `conversations.embedding_model` and chunk embeddings/model metadata remain nullable until embedding generation is implemented.
-
 ## 🔄 Current Status
 
-**v2.4 — Context Engineering** *(in progress)*
+**v4.0 — Personal Knowledge Base** *(in progress)*
  
 - ✅ v1.0 complete — Vue chat UI, Spring Boot API, Python microservice and OpenAI integration all connected and working
 - ✅ v2.1 complete — conversation history persisted, last 9 messages + current sent to the model, token tracking, conversation sidebar
 - ✅ v2.2 complete — system prompts, structured output, error handling, retries, token tracking
 - ✅ v2.3 complete — OpenAI streaming, FastAPI StreamingResponse, SSE, Spring WebClient + Flux, Vue streaming, persistence on completion
-- ✅ v2.4 in complete — Token budget, conversation summarization, context construction without embeddings
-- 🔄 v3.0 in progress — Conversation embeddings, pgvector, semantic retrieval, dynamic context, initial message chunking strategy
+- ✅ v2.4 complete — Token budget, conversation summarization, context construction without embeddings
+- ✅ v3.0 complete — Conversation embeddings and chunking, pgvector semantic retrieval, dynamic context budgets, and embedding model migration
