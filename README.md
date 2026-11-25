@@ -72,7 +72,7 @@ The project is divided into three independent layers that communicate over HTTP:
 ### Infrastructure
 | Technology | Purpose |
 |---|---|
-| Docker + Docker Compose | Local PostgreSQL and pgvector |
+| Docker + Docker Compose | Local PostgreSQL and pgvector + later containerization |
 | pgAdmin 4 | PostgreSQL GUI |
 | Git + GitHub | Version control |
 
@@ -90,7 +90,7 @@ The project is divided into three independent layers that communicate over HTTP:
 | **v3.0** | 3 | Embeddings & Dynamic Context | Conversation embeddings, pgvector, semantic retrieval, dynamic context, initial message chunking strategy |
 | **v4.0** | 4 | Personal Knowledge Base | Full notes CRUD, document import, frontend for notes |
 | **v5.0** | 5 | RAG | Built from scratch — query processing, vector search, relevant chunks injected as context |
-| **v6** | 6 | Evaluation | Recall, faithfulness, relevancy metrics across RAG versions |
+| **v6.0** | 6 | Evaluation | Recall, faithfulness, relevancy metrics across RAG versions |
 | **v7.0** | 7 | Auth + AI Security | JWT, prompt injection awareness, scoped data per user |
 | **v8.0** | 8 | Tools | Function calling, AI executes actions (search_knowledge, create_note, search_web...) |
 | **v9.0** | 9 | Agents | ReAct loop, tool chaining, autonomous AI decisions |
@@ -216,3 +216,4 @@ personal-knowledge-base/
 - ✅ v2.3 complete — OpenAI streaming, FastAPI StreamingResponse, SSE, Spring WebClient + Flux, Vue streaming, persistence on completion
 - ✅ v2.4 complete — Token budget, conversation summarization, context construction without embeddings
 - ✅ v3.0 complete — Conversation embeddings and chunking, pgvector semantic retrieval, dynamic context budgets, and embedding model migration
+- 🔄 v4.0 in progress — Full notes CRUD, document import, frontend for notes
