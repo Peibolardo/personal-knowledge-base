@@ -37,7 +37,6 @@ import static backend.utils.VectorUtils.toVectorString;
 public class EmbeddingCommandServiceImpl implements EmbeddingCommandService {
 
     private static final Logger logger = LoggerFactory.getLogger(EmbeddingCommandServiceImpl.class);
-    private static final int EMBEDDING_DIMENSIONS = 1536;
     private static final double SIMILARITY_THRESHOLD = 0.70;
 
     private final MessageChunkRepository messageChunkRepository;
@@ -177,7 +176,7 @@ public class EmbeddingCommandServiceImpl implements EmbeddingCommandService {
                     || chunk.getTokenCount() == null
                     || chunk.getTokenCount() <= 0
                     || chunk.getEmbedding() == null
-                    || chunk.getEmbedding().size() != EMBEDDING_DIMENSIONS
+                    || chunk.getEmbedding().size() != embeddingCapabilitiesProvider.getEmbeddingCapabilities().getDimensions()
                     || chunk.getEmbedding().stream().anyMatch(value -> value == null || !Float.isFinite(value))
                     || chunk.getEmbeddingModel() == null
                     || chunk.getEmbeddingModel().isBlank()) {
@@ -220,7 +219,7 @@ public class EmbeddingCommandServiceImpl implements EmbeddingCommandService {
         // 3. Validate the vector dimensions, values, model, and compatibility with stored conversation chunks.
         if (response == null
                 || response.getEmbedding() == null
-                || response.getEmbedding().size() != EMBEDDING_DIMENSIONS
+                || response.getEmbedding().size() != embeddingCapabilitiesProvider.getEmbeddingCapabilities().getDimensions()
                 || response.getEmbedding().stream().anyMatch(value -> value == null || !Float.isFinite(value))
                 || response.getEmbeddingModel() == null
                 || response.getEmbeddingModel().isBlank()) {

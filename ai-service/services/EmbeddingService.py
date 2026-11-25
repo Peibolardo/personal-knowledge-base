@@ -77,7 +77,9 @@ class EmbeddingService:
 
         embedding_operation = lambda: self.client.embeddings.create(
             model=self.model,
-            input=chunk_contents
+            input=chunk_contents,
+            dimensions=self.dimensions
+            
         )
 
         response = await self.retry_service.execute(embedding_operation)
@@ -127,7 +129,8 @@ class EmbeddingService:
 
         query_embedding_operation = lambda: self.client.embeddings.create(
             model=self.model,
-            input=query
+            input=query,
+            dimensions=self.dimensions
         )
 
         response = await self.retry_service.execute(query_embedding_operation)

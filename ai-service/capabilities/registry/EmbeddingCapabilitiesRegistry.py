@@ -7,7 +7,8 @@ MODEL_CAPABILITIES = {
         "dimensions": 1536,
     },
     "text-embedding-3-large": {
-        "dimensions": 3072,
+        "dimensions": 1536,
+        "original_dimensions": 3072,
     },
 }
 

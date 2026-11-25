@@ -847,6 +847,7 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
     /**
      * Schedules embedding generation for the persisted user request and assistant response.
      * Runs the embedding work on the dedicated executor so it does not block the chat response flow.
+     * Synchronizes on the shared conversation lock so turn embeddings cannot overlap with a migration for the same conversation.
      * Failures are logged without changing the already completed chat response.
      *
      * @param requestId ID of the persisted user message
@@ -873,6 +874,7 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
 
     /**
      * Schedules the migration of all message embeddings for a conversation on its dedicated executor.
+     * Synchronizes on the shared conversation lock so migration cannot overlap with turn embedding for the same conversation.
      * Migration failures are logged and do not block the caller while the database transaction rolls back.
      *
      * @param conversationId ID of the conversation whose embeddings should be migrated
@@ -950,6 +952,16 @@ public class OpenAICommandServiceImpl implements OpenAICommandService {
 
     }
 
+    /**
+     * Retrieves or creates the in-memory lock associated with a conversation.
+     *
+     * <p>{@code computeIfAbsent} ensures concurrent callers receive the same lock object for the same
+     * conversation ID. Embedding generation and migration synchronize on this object, serializing
+     * those operations for one conversation while allowing different conversations to proceed independently.</p>
+     *
+     * @param conversationId ID used to identify the conversation-specific lock
+     * @return the shared lock object for the conversation
+     */
     private Object getConversationLock(String conversationId) {
         return conversationLocks.computeIfAbsent(
                 conversationId,
